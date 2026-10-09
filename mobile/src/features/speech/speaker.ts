@@ -6,8 +6,22 @@ import { apiUrl } from '@/core/config';
 import { LINES, type LineId } from '@/core/lines';
 import { VOICE } from '@/audio/voiceManifest';
 
-/** Voz mais grave/solene sem custo: toca mais devagar sem corrigir o pitch. */
-const PLAYBACK_RATE = 0.93;
+/**
+ * Fallback sem servidor de voz: voz do aparelho. Preferimos uma voz pt-BR masculina
+ * (iOS: Felipe; Android/Google: ptd/pte); a padrão do iPhone (Luciana) é feminina.
+ */
+let deviceVoice: string | undefined;
+let deviceVoiceLoaded = false;
+async function pickDeviceVoice() {
+  if (deviceVoiceLoaded) return deviceVoice;
+  deviceVoiceLoaded = true;
+  try {
+    const voices = (await Speech.getAvailableVoicesAsync()).filter((v) => /^pt[-_]BR/i.test(v.language));
+    const male = voices.find((v) => /felipe|ptd|pte|male|masculin|ricardo|daniel/i.test(`${v.name} ${v.identifier}`));
+    deviceVoice = (male ?? voices.find((v) => /enhanced|premium/i.test(v.quality ?? '')))?.identifier;
+  } catch {}
+  return deviceVoice;
+}
 
 type Playable = { kind: 'file'; uri: string | number } | { kind: 'device'; text: string };
 interface Item {
@@ -36,12 +50,14 @@ async function fetchTts(text: string, signal: AbortSignal): Promise<Playable> {
     if (!res.ok) throw new Error(`tts ${res.status}`);
     return { kind: 'file', uri: URL.createObjectURL(await res.blob()) };
   }
-  const file = new File(Paths.cache, `tts-${hash(text)}.mp3`);
-  if (file.exists) return { kind: 'file', uri: file.uri };
+  const cached = [new File(Paths.cache, `tts-${hash(text)}.mp3`), new File(Paths.cache, `tts-${hash(text)}.wav`)].find((f) => f.exists);
+  if (cached) return { kind: 'file', uri: cached.uri };
   const res = await fetch(`${apiUrl()}/api/tts`, {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }), signal,
   });
   if (!res.ok) throw new Error(`tts ${res.status}`);
+  const ext = (res.headers.get('content-type') ?? '').includes('wav') ? 'wav' : 'mp3';
+  const file = new File(Paths.cache, `tts-${hash(text)}.${ext}`);
   file.write(new Uint8Array(await res.arrayBuffer()));
   return { kind: 'file', uri: file.uri };
 }
@@ -151,17 +167,17 @@ export class Speaker {
     return new Promise<void>((resolve) => {
       if (p.kind === 'device') {
         this.cancelPlay = resolve;
-        Speech.speak(p.text, {
-          language: 'pt-BR', pitch: 0.45, rate: 0.8,
-          onDone: () => resolve(), onStopped: () => resolve(), onError: () => resolve(),
-        });
+        void pickDeviceVoice().then((voice) =>
+          Speech.speak(p.text, {
+            language: 'pt-BR', voice, pitch: 0.5, rate: 0.78,
+            onDone: () => resolve(), onStopped: () => resolve(), onError: () => resolve(),
+          }),
+        );
         return;
       }
       try {
         const player = createAudioPlayer(p.uri);
         this.player = player;
-        player.shouldCorrectPitch = false;
-        player.playbackRate = PLAYBACK_RATE;
         const sub = player.addListener('playbackStatusUpdate', (s) => {
           if (s.didJustFinish) done();
         });

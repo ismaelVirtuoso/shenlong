@@ -1,0 +1,45 @@
+import { spawn, spawnSync } from 'node:child_process';
+
+let hasFfmpeg: boolean | null = null;
+export const ffmpegAvailable = () => (hasFfmpeg ??= spawnSync('ffmpeg', ['-version'], { stdio: 'ignore' }).status === 0);
+
+/**
+ * "Voz de dragão": tom bem grave (~85 Hz), formantes um pouco abaixo (garganta gigante, mas
+ * inteligível para criança), uma camada uma oitava abaixo para o peso, presença em 2–3 kHz
+ * para continuar clara no alto-falante do celular, reverb de catedral (voz vinda do céu)
+ * e compressão. Ritmo ~12% mais lento, solene.
+ * Não imita nenhum dublador: é um arquétipo (voz grave, antiga, ressonante).
+ */
+const FORMANT = 0.86; // tamanho do trato vocal (asetrate)
+const TEMPO = 0.88;
+/** tom total por provedor: Piper "faber" é tenor (~140 Hz); onyx (OpenAI) já é grave (~105 Hz) */
+const PITCH: Record<string, number> = { piper: 0.62, openai: 0.8 };
+
+function filter(engine: string) {
+  const p2 = (PITCH[engine] ?? 0.75) / FORMANT;
+  const t2 = TEMPO / FORMANT;
+  return [
+    `[0:a]aresample=48000,asetrate=${Math.round(48000 * FORMANT)},aresample=48000,` +
+      `rubberband=pitch=${p2.toFixed(4)}:tempo=${t2.toFixed(4)}:formant=preserved:transients=smooth,asplit=2[m][s]`,
+    `[s]rubberband=pitch=0.5:formant=preserved,lowpass=f=2200,volume=0.5[sub]`,
+    `[m][sub]amix=inputs=2:weights=1 0.75:normalize=0,` +
+      `highpass=f=65,bass=g=4:f=130,equalizer=f=2600:t=q:w=1.3:g=4,` +
+      `aecho=0.8:0.86:60|130|260|430:0.3|0.22|0.14|0.08,` +
+      `acompressor=threshold=-21dB:ratio=3.5:attack=8:release=220:makeup=3.5,alimiter=limit=0.94,apad=pad_dur=0.25[out]`,
+  ].join(';');
+}
+
+export function dragonize(audio: Buffer, engine: string): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const p = spawn('ffmpeg', ['-v', 'error', '-i', 'pipe:0', '-filter_complex', filter(engine), '-map', '[out]', '-ac', '1', '-ar', '44100', '-c:a', 'libmp3lame', '-b:a', '112k', '-f', 'mp3', 'pipe:1'], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    const out: Buffer[] = [];
+    let err = '';
+    p.stdout.on('data', (c: Buffer) => out.push(c));
+    p.stderr.on('data', (c: Buffer) => (err += c.toString()));
+    p.on('error', reject);
+    p.on('close', (code) => (code === 0 ? resolve(Buffer.concat(out)) : reject(new Error(`ffmpeg ${code}: ${err.slice(0, 300)}`))));
+    p.stdin.end(audio);
+  });
+}

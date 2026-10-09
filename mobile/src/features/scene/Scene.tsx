@@ -1,12 +1,11 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, useWindowDimensions } from 'react-native';
 import { Canvas, Group, useCanvasRef } from '@shopify/react-native-skia';
 import { useDerivedValue } from 'react-native-reanimated';
 import { PROFILES } from '@/core/quality';
 import { Altar, Balls } from './Balls';
-import { Energy, Lightning } from './Energy';
+import { Bolt, Embers, Pillar, Vignette, WishWave } from './Energy';
 import { useSceneValues } from './drive';
-import { FrontClouds } from './Sky';
 import { useSceneStore } from './bridge';
 import type { Layout } from './types';
 
@@ -15,6 +14,13 @@ export function Scene() {
   const W = Platform.OS === 'web' ? Math.min(win.width, 440) : win.width; // web = só p/ depurar o visual
   const H = win.height;
   const quality = useSceneStore((s) => s.quality);
+  const phase = useSceneStore((s) => s.m.phase);
+  const fx = useSceneStore((s) => s.fx);
+  // efeitos montados só quando existem: nada de blur invisível sendo desenhado a cada quadro
+  const showAltar = phase === 'boot' || phase === 'altar' || phase === 'summoning' || phase === 'disappearing';
+  const showPillar = phase === 'summoning' || phase === 'appearing' || phase === 'disappearing';
+  const bolt = usePulse(fx.bolt + fx.wish, 1400);
+  const wave = usePulse(fx.wish, 2600);
   const S = useSceneValues();
   const ref = useCanvasRef();
 
@@ -34,12 +40,30 @@ export function Scene() {
   return (
     <Canvas ref={ref} style={{ position: 'absolute', top: 0, left: 0, width: W, height: H }}>
       <Group transform={shake}>
-        <Altar S={S} L={L} />
-        <Energy S={S} L={L} />
-        <FrontClouds S={S} L={L} />
+        {showAltar && <Altar S={S} L={L} />}
+        {showPillar && <Pillar S={S} L={L} />}
+        <Embers S={S} L={L} />
+        {wave && <WishWave S={S} L={L} />}
         <Balls S={S} L={L} />
       </Group>
-      <Lightning S={S} L={L} />
+      {bolt && <Bolt S={S} L={L} />}
+      <Vignette L={L} />
     </Canvas>
   );
+}
+
+/** true por `ms` após cada mudança de `key` (o primeiro valor não dispara). */
+function usePulse(key: number, ms: number) {
+  const [on, setOn] = useState(false);
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    setOn(true);
+    const t = setTimeout(() => setOn(false), ms);
+    return () => clearTimeout(t);
+  }, [key, ms]);
+  return on;
 }

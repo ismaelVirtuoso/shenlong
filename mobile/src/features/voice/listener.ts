@@ -18,7 +18,7 @@ const TICK = 60;
 const END_SILENCE = 700;
 const MAX_SPEECH = 6500;
 const ROTATE_IDLE = 4000;
-const MIN_VOICE_DB = -42;
+const MIN_VOICE_DB = -46;
 
 const toLevel = (db: number) => Math.min(1, Math.max(0, (db + 55) / 40));
 
@@ -97,7 +97,7 @@ export class VoiceListener {
       this.h.onLevel(smooth);
       peak = Math.max(peak, level);
 
-      const isVoice = db > Math.max(floor + 10, MIN_VOICE_DB);
+      const isVoice = db > Math.max(floor + 8, MIN_VOICE_DB);
       if (!isVoice) floor += (Math.max(db, -80) - floor) * 0.05;
 
       if (isVoice) {

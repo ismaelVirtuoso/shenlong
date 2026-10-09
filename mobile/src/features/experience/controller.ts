@@ -6,8 +6,9 @@ import { isInvocation } from '@/core/phrases';
 import { hap, rampHaptics } from '@/audio/haptics';
 import { loadSfx, playSfx, stopAllSfx, stopSfx } from '@/audio/sfx';
 import { ChatUnavailable, streamChat, type Turn } from '../conversation/chat';
+import { checkBackend } from '../conversation/health';
 import { Speaker } from '../speech/speaker';
-import { looksLikeHallucination, SttUnavailable, transcribe } from '../voice/stt';
+import { deleteClip, looksLikeHallucination, SttUnavailable, transcribe } from '../voice/stt';
 import { VoiceListener, type ClipInfo } from '../voice/listener';
 import { micLevel, useStore } from './store';
 import { TIMING } from './timing';
@@ -47,6 +48,7 @@ class Controller {
     if (this.started || this.m.phase !== 'boot') return;
     this.started = true;
     loadSfx();
+    void this.refreshBackend();
     const granted = await VoiceListener.requestPermission();
     useStore.getState().set({ micDenied: !granted });
     this.dispatch({ type: 'START' });
@@ -85,6 +87,12 @@ class Controller {
     this.cancelAll();
     useStore.getState().set({ m: { phase, wishes: 0, idlePrompts: 0 }, caption: null, speaking: false });
     this.enter(phase, 'debug');
+  }
+
+  private async refreshBackend() {
+    const b = await checkBackend();
+    useStore.getState().set({ backend: b });
+    if (__DEV__) console.log('[shenlong] servidor', JSON.stringify(b));
   }
 
   // ───────────── núcleo ─────────────
@@ -133,6 +141,7 @@ class Controller {
     switch (phase) {
       case 'altar':
         st.set({ caption: null });
+        void this.refreshBackend();
         stopAllSfx();
         playSfx('drone', { loop: true, volume: 0.5 });
         this.listen('invocation');
@@ -242,22 +251,32 @@ class Controller {
   private async onClip(mode: 'invocation' | 'conversation', clip: ClipInfo) {
     if (this.processing) return;
     const phaseAtStart = this.m.phase;
+    if (__DEV__) console.log(`[voz] fala de ${clip.voiceMs} ms, pico ${clip.peak.toFixed(2)}`);
+    const offline = async () => {
+      if (mode === 'invocation') {
+        // sem STT (sem chave/sem rede): qualquer fala clara de ~0,5–5 s invoca — a criança sempre consegue
+        if (clip.voiceMs >= 450 && clip.voiceMs <= 5500 && clip.peak > 0.3) this.invoke();
+        else useStore.getState().bump('missed');
+      } else if (this.m.phase === 'listening') {
+        await this.failTurn('offline');
+      }
+    };
+    if (!useStore.getState().backend.stt) {
+      deleteClip(clip.uri);
+      void this.refreshBackend();
+      await offline();
+      return;
+    }
     let text = '';
     try {
       text = await transcribe(clip.uri);
     } catch (e) {
-      if (!(e instanceof SttUnavailable)) return;
-      // sem STT/sem internet
-      if (mode === 'invocation') {
-        // degradação elegante: uma fala alta de 0,8–4,5 s vale como invocação
-        if (clip.voiceMs >= 800 && clip.voiceMs <= 4500 && clip.peak > 0.55) {
-          this.invoke();
-        } else useStore.getState().bump('missed');
-      } else if (this.m.phase === 'listening') {
-        await this.failTurn('offline');
-      }
+      if (__DEV__) console.log('[stt] falhou', String(e));
+      if (e instanceof SttUnavailable) await offline();
       return;
     }
+    if (__DEV__) console.log(`[stt] "${text}"`);
+    useStore.getState().set({ lastHeard: text });
     if (this.m.phase !== phaseAtStart) return;
     if (looksLikeHallucination(text, clip.voiceMs)) {
       if (mode === 'invocation') useStore.getState().bump('missed');

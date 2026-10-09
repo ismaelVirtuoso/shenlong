@@ -24,8 +24,15 @@ export async function transcribe(uri: string): Promise<string> {
     throw new SttUnavailable(String(e)); // rede/timeout: trata igual (modo offline)
   } finally {
     clearTimeout(timer);
+    deleteClip(uri);
+  }
+}
+
+/** áudio da criança nunca fica no aparelho */
+export function deleteClip(uri: string) {
+  {
     if (Platform.OS !== 'web') {
-      try { new File(uri).delete(); } catch {} // áudio da criança nunca fica no aparelho
+      try { new File(uri).delete(); } catch {}
     }
   }
 }

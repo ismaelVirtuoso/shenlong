@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { computeFrames, createSpine, DynamicTube, type Spine } from './tube';
 
-const N = 22;
+const N = 16;
 
 /** Bigode longo com física verlet: preso no lábio, atraído para a forma de repouso, com inércia e vento. */
 export class Whisker {
@@ -45,8 +45,9 @@ export class Whisker {
       target.copy(this.rest[j]!);
       head.localToWorld(target);
       if (!this.init) {
-        x.set([target.x, target.y, target.z], j * 3);
-        prev.set([target.x, target.y, target.z], j * 3);
+        x[j * 3] = prev[j * 3] = target.x;
+        x[j * 3 + 1] = prev[j * 3 + 1] = target.y;
+        x[j * 3 + 2] = prev[j * 3 + 2] = target.z;
         continue;
       }
       const a = j / (N - 1);
@@ -62,10 +63,12 @@ export class Whisker {
         x[i] = cur + (cur - prev[i]!) * 0.86 + acc;
         prev[i] = cur;
       }
-      if (j <= 1) x.set([target.x, target.y, target.z], j * 3); // base rígida
+      if (j <= 1) { // base rígida
+        x[j * 3] = target.x; x[j * 3 + 1] = target.y; x[j * 3 + 2] = target.z;
+      }
     }
     this.init = true;
-    for (let it = 0; it < 8; it++)
+    for (let it = 0; it < 4; it++)
       for (let j = 1; j < N; j++) {
         const a = (j - 1) * 3, b = j * 3;
         const dx = x[b]! - x[a]!, dy = x[b + 1]! - x[a + 1]!, dz = x[b + 2]! - x[a + 2]!;

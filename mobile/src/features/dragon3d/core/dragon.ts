@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import type { DragonAsset } from './glb';
-import type { DragonMaterials } from './materials';
+import { bodySpine, createBodyDepthMaterial, type DragonMaterials } from './materials';
 import { BodyPath } from './path';
-import { computeFrames, createSpine, DynamicTube, type Spine } from './tube';
+import { computeFrames, createSpine, GpuTube, type Spine } from './tube';
 import { Whisker } from './whisker';
 import type { DragonInput, QualityLevel } from './types';
 import { makeGlowTexture } from './textures';
@@ -41,7 +41,7 @@ export class Dragon {
   private orb: THREE.Sprite;
   private path: BodyPath;
   private spine: Spine;
-  private body: DynamicTube;
+  private body: GpuTube;
   private bodyMesh: THREE.Mesh;
   private spikes: THREE.InstancedMesh;
   private legs: THREE.Mesh[] = [];
@@ -60,6 +60,10 @@ export class Dragon {
   private q1 = new THREE.Quaternion();
   private q2 = new THREE.Quaternion();
   private e1 = new THREE.Euler();
+  private tv = { T: new THREE.Vector3(), N: new THREE.Vector3(), B: new THREE.Vector3(), Y: new THREE.Vector3(), Z: new THREE.Vector3() };
+  private pt = new THREE.Vector3();
+  private neckPos = new THREE.Vector3();
+  private travel = new THREE.Vector3();
 
   constructor(asset: DragonAsset, mats: DragonMaterials, quality: QualityLevel, camera: THREE.Vector3) {
     const hi = quality === 'high';
@@ -69,8 +73,8 @@ export class Dragon {
       return m;
     };
     const shadow = (o: THREE.Mesh) => {
-      o.castShadow = quality !== 'low';
-      o.receiveShadow = quality !== 'low';
+      o.castShadow = hi;
+      o.receiveShadow = hi;
       return o;
     };
 
@@ -120,11 +124,13 @@ export class Dragon {
     this.path.update(0, 0);
     this.bodyLength = this.path.length;
 
-    this.rings = hi ? 230 : quality === 'medium' ? 170 : 120;
-    const sides = hi ? 30 : quality === 'medium' ? 24 : 18;
+    this.rings = hi ? 160 : quality === 'medium' ? 130 : 100;
+    const sides = hi ? 32 : quality === 'medium' ? 26 : 20;
     this.spine = createSpine(this.rings);
-    this.body = new DynamicTube(this.rings, sides, { vRepeat: 3, flatBelly: 0.55, colors: bodyColor, belly: true });
+    this.body = new GpuTube(this.rings, sides, { vRepeat: 3, flatBelly: 0.55, uScale: 1.15, colors: bodyColor });
+    bodySpine.uSpine.value = this.body.uniforms.uSpine.value;
     this.bodyMesh = shadow(new THREE.Mesh(this.body.geometry, mats.body));
+    this.bodyMesh.customDepthMaterial = createBodyDepthMaterial();
     this.bodyMesh.frustumCulled = false;
 
     // espinhos dorsais (lâminas finas, inclinadas para trás)
@@ -141,7 +147,7 @@ export class Dragon {
     mats.spike.color.set('#ffffff');
     const spikeCount = Math.floor((this.bodyLength - 3) / SPIKE_STEP);
     this.spikes = new THREE.InstancedMesh(spikeGeo, mats.spike, spikeCount);
-    this.spikes.castShadow = quality !== 'low';
+    this.spikes.castShadow = hi;
     this.spikes.frustumCulled = false;
 
     for (const [, side] of LEGS) {
@@ -155,7 +161,7 @@ export class Dragon {
       const w = new Whisker(a, Math.sign(a.x), 3.4);
       const m = new THREE.Mesh(w.tube.geometry, mats.whisker);
       m.frustumCulled = false;
-      m.castShadow = quality !== 'low';
+      m.castShadow = hi;
       this.whiskers.push(w);
       this.root.add(m);
     }
@@ -177,14 +183,16 @@ export class Dragon {
     this.root.visible = p > 0.002;
     if (!this.root.visible) return;
 
+    const P0 = performance.now();
     this.path.update(t, inp.wish + inp.speak * 0.3);
+    const P1 = performance.now();
     const L = this.path.length;
     const headU = L * p;
 
     // ── cabeça: segue o caminho ao surgir, depois encara a câmera (3/4) ──
-    const neckPos = this.path.at(headU, new THREE.Vector3());
+    const neckPos = this.path.at(headU, this.neckPos);
     const behind = this.path.at(headU - 0.6, this.v1);
-    const travel = neckPos.clone().sub(behind).normalize();
+    const travel = this.travel.copy(neckPos).sub(behind).normalize();
     this.lookQuat(travel, this.q1);
     const front = sstep(0.68, 0.98, p);
     this.q1.slerp(this.qFinal, front);
@@ -222,6 +230,7 @@ export class Dragon {
     }
     this.orb.scale.setScalar(0.6 + 0.25 * Math.sin(t * 6));
     (this.orb.material as THREE.SpriteMaterial).opacity = inp.think * 0.9;
+    this.orb.visible = inp.think > 0.01;
 
     // ── espinha do corpo ──
     const sp = this.spine;
@@ -229,11 +238,12 @@ export class Dragon {
     const BL = this.bodyLength;
     const headBack = this.v3.set(0, 0, -1).applyQuaternion(this.head.quaternion);
     const blendLen = 2.2;
-    const pt = new THREE.Vector3();
+    const pt = this.pt;
+    let cursor = this.path.cursorAt(headU);
     for (let i = 0; i < n; i++) {
       const s = (i / (n - 1)) * BL;
       const u = headU - s;
-      this.path.at(u, pt);
+      cursor = this.path.atFrom(u, cursor, pt);
       if (s < blendLen) {
         const w = sstep(0, blendLen, s);
         pt.lerp(this.v1.copy(neckPos).addScaledVector(headBack, s), 1 - w);
@@ -246,11 +256,14 @@ export class Dragon {
       r *= sstep(-0.2, 0.6, u);
       sp.r[i] = Math.max(0.0005, r);
     }
+    const P2 = performance.now();
     computeFrames(sp, this.v2.set(0, 1, 0).applyQuaternion(this.head.quaternion));
-    this.body.update(sp, 1.15);
+    const P3 = performance.now();
+    this.body.update(sp);
+    const P4 = performance.now();
 
     // espinhos dorsais
-    const T = new THREE.Vector3(), N = new THREE.Vector3(), B = new THREE.Vector3(), Y = new THREE.Vector3(), Z = new THREE.Vector3();
+    const { T, N, B, Y, Z } = this.tv;
     let count = 0;
     for (let j = 0; j < this.spikes.count; j++) {
       const s = 2.6 + j * SPIKE_STEP;
@@ -262,7 +275,7 @@ export class Dragon {
       Y.copy(N).multiplyScalar(Math.cos(0.75 + sway)).addScaledVector(T, Math.sin(0.75 + sway)).normalize();
       Z.crossVectors(B, Y).normalize();
       const h = r * (0.75 + 0.25 * Math.sin(j * 1.7)) * (1 - 0.4 * sstep(0.7, 1, s / BL));
-      this.m4.makeBasis(B.clone().multiplyScalar(r * 0.12), Y.clone().multiplyScalar(h), Z.clone().multiplyScalar(r * 0.7));
+      this.m4.makeBasis(B.multiplyScalar(r * 0.12), Y.multiplyScalar(h), Z.multiplyScalar(r * 0.7));
       this.m4.setPosition(this.v1.fromArray(sp.p, i * 3).addScaledVector(N, r * 0.78));
       this.spikes.setMatrixAt(count++, this.m4);
     }
@@ -289,6 +302,17 @@ export class Dragon {
       leg.position.fromArray(sp.p, i * 3).addScaledVector(B, side * r * 0.62).addScaledVector(N, -r * 0.3);
     });
 
+    const P5 = performance.now();
     for (const w of this.whiskers) w.update(this.head, t, inp.wish + inp.speak * 0.5);
+    const P6 = performance.now();
+    const pr = this.prof;
+    const add = (i: number, v: number) => (pr[i] = (pr[i] ?? 0) + v);
+    add(0, P1 - P0); add(1, P2 - P1); add(2, P3 - P2); add(3, P4 - P3); add(4, P5 - P4); add(5, P6 - P5); add(6, 1);
+    if ((pr[6] ?? 0) >= 60 && (__DEV__ || process.env.EXPO_PUBLIC_PROFILE === '1')) {
+      const f = (i: number) => ((pr[i] ?? 0) / 60).toFixed(1);
+      console.log(`[dragon3d] perfil: path ${f(0)} · espinha ${f(1)} · frames ${f(2)} · tubo ${f(3)} · espinhos+patas ${f(4)} · bigodes ${f(5)} ms`);
+      pr.fill(0);
+    }
   }
+  private prof = [0, 0, 0, 0, 0, 0, 0];
 }

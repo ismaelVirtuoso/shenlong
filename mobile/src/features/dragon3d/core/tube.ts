@@ -150,3 +150,109 @@ export class DynamicTube {
     this.uvAttr.needsUpdate = true;
   }
 }
+
+/** Dados da espinha empacotados por anel (4 texels RGBA32F): [P,r] [T,dr/ds] [N,s] [B,0]. */
+export const SPINE_GLSL = /* glsl */ `
+attribute vec2 ringSide;
+uniform highp sampler2D uSpine;
+uniform float uFlat;
+uniform float uUScale;
+uniform float uVRepeat;
+vec3 gTubePos;
+vec2 gTubeUv;
+void spineVertex(out vec3 nrm) {
+  int r = int(ringSide.x + 0.5);
+  vec4 P = texelFetch(uSpine, ivec2(r, 0), 0);
+  vec4 T = texelFetch(uSpine, ivec2(r, 1), 0);
+  vec4 N = texelFetch(uSpine, ivec2(r, 2), 0);
+  vec4 B = texelFetch(uSpine, ivec2(r, 3), 0);
+  float a = ringSide.y * 6.28318530718;
+  float c = cos(a), s = sin(a);
+  float cd = c, nd = c;
+  if (uFlat > 0.0 && c < -0.55) { // ventre achatado
+    cd = -0.55 + (c + 0.55) * (1.0 - uFlat);
+    nd = c - (c + 0.55) * uFlat * 2.2;
+  }
+  nrm = normalize(N.xyz * nd + B.xyz * s - T.xyz * T.w);
+  gTubePos = P.xyz + (N.xyz * cd + B.xyz * s) * P.w;
+  gTubeUv = vec2(N.w / uUScale, ringSide.y * uVRepeat);
+}
+`;
+
+export interface SpineUniforms {
+  uSpine: { value: THREE.DataTexture };
+  uFlat: { value: number };
+  uUScale: { value: number };
+  uVRepeat: { value: number };
+}
+
+/**
+ * Tubo deformado na GPU: o JS só calcula os anéis da espinha (posição/quadro/raio) e os envia
+ * numa textura float; o vertex shader monta vértices e normais (também na passada de sombra).
+ * Custo de CPU ~independe do número de vértices.
+ */
+export class GpuTube {
+  readonly geometry = new THREE.BufferGeometry();
+  readonly uniforms: SpineUniforms;
+  private data: Float32Array;
+  private tex: THREE.DataTexture;
+
+  constructor(
+    readonly rings: number,
+    readonly sides: number,
+    opts: { vRepeat: number; flatBelly: number; uScale: number; colors: (side01: number) => [number, number, number] },
+  ) {
+    const vc = rings * (sides + 1);
+    const rs = new Float32Array(vc * 2);
+    const col = new Float32Array(vc * 3);
+    const bel = new Float32Array(vc);
+    const idx: number[] = [];
+    for (let r = 0; r < rings; r++)
+      for (let k = 0; k <= sides; k++) {
+        const i = r * (sides + 1) + k;
+        rs[i * 2] = r;
+        rs[i * 2 + 1] = k / sides;
+        col.set(opts.colors(k / sides), i * 3);
+        bel[i] = Math.min(1, Math.max(0, (-Math.cos((k / sides) * Math.PI * 2) - 0.45) / 0.35));
+      }
+    for (let r = 0; r < rings - 1; r++)
+      for (let k = 0; k < sides; k++) {
+        const a = r * (sides + 1) + k, b = a + 1, c = a + sides + 1, d = c + 1;
+        idx.push(a, b, c, b, d, c);
+      }
+    this.geometry.setIndex(vc > 65535 ? new THREE.Uint32BufferAttribute(idx, 1) : new THREE.Uint16BufferAttribute(idx, 1));
+    this.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vc * 3), 3)); // ignorada pelo shader
+    this.geometry.setAttribute('ringSide', new THREE.BufferAttribute(rs, 2));
+    this.geometry.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    this.geometry.setAttribute('belly', new THREE.BufferAttribute(bel, 1));
+    this.geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e4);
+
+    this.data = new Float32Array(rings * 4 * 4);
+    this.tex = new THREE.DataTexture(this.data, rings, 4, THREE.RGBAFormat, THREE.FloatType);
+    this.tex.minFilter = this.tex.magFilter = THREE.NearestFilter;
+    this.tex.generateMipmaps = false;
+    this.tex.needsUpdate = true;
+    this.uniforms = {
+      uSpine: { value: this.tex },
+      uFlat: { value: opts.flatBelly },
+      uUScale: { value: opts.uScale },
+      uVRepeat: { value: opts.vRepeat },
+    };
+  }
+
+  update(sp: Spine) {
+    const { rings, data } = this;
+    const row = rings * 4;
+    for (let r = 0; r < rings; r++) {
+      const i3 = r * 3, o = r * 4;
+      const ra = sp.r[Math.max(0, r - 1)]!, rb = sp.r[Math.min(rings - 1, r + 1)]!;
+      const sa = sp.s[Math.max(0, r - 1)]!, sb = sp.s[Math.min(rings - 1, r + 1)]!;
+      data[o] = sp.p[i3]!; data[o + 1] = sp.p[i3 + 1]!; data[o + 2] = sp.p[i3 + 2]!; data[o + 3] = sp.r[r]!;
+      data[row + o] = sp.t[i3]!; data[row + o + 1] = sp.t[i3 + 1]!; data[row + o + 2] = sp.t[i3 + 2]!;
+      data[row + o + 3] = sb - sa > 1e-5 ? (rb - ra) / (sb - sa) : 0;
+      data[2 * row + o] = sp.n[i3]!; data[2 * row + o + 1] = sp.n[i3 + 1]!; data[2 * row + o + 2] = sp.n[i3 + 2]!; data[2 * row + o + 3] = sp.s[r]!;
+      data[3 * row + o] = sp.b[i3]!; data[3 * row + o + 1] = sp.b[i3 + 1]!; data[3 * row + o + 2] = sp.b[i3 + 2]!;
+    }
+    this.tex.needsUpdate = true;
+  }
+}

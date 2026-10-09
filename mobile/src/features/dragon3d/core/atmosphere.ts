@@ -22,14 +22,14 @@ export class Atmosphere {
   readonly fog = new THREE.FogExp2('#0b1a22', 0.03);
   private skyMat: THREE.ShaderMaterial;
   private stars: THREE.Points;
-  private clouds: { s: THREE.Sprite; base: THREE.Vector3; sp: number; ph: number; front: boolean }[] = [];
-  private rays: THREE.Mesh[] = [];
+  private clouds: { base: THREE.Vector3; sp: number; ph: number; front: boolean }[] = [];
+  private cloudPos!: THREE.BufferAttribute;
+  private cloudMat!: THREE.ShaderMaterial;
+  private rayMat!: THREE.MeshBasicMaterial;
   readonly key: THREE.DirectionalLight;
   readonly rim: THREE.DirectionalLight;
   readonly top: THREE.DirectionalLight;
   readonly hemi: THREE.HemisphereLight;
-  readonly balls: THREE.PointLight;
-  readonly flash: THREE.DirectionalLight;
   private c1 = new THREE.Color();
   private c2 = new THREE.Color();
   private c3 = new THREE.Color();
@@ -74,9 +74,11 @@ export class Atmosphere {
     this.stars = new THREE.Points(sg, new THREE.PointsMaterial({ color: '#ffffff', size: 1.6, sizeAttenuation: false, transparent: true, fog: false, depthWrite: false }));
     this.group.add(this.stars);
 
-    // nuvens: sprites em profundidades diferentes, intercaladas com as voltas do corpo
+    // nuvens: uma única malha de quads com billboard no vertex shader (1 draw call), em profundidades
+    // diferentes, intercaladas com as voltas do corpo
     const tex = makeCloudTexture(128);
     const n = quality === 'low' ? 10 : quality === 'medium' ? 16 : 22;
+    const pos = new Float32Array(n * 4 * 3), corner = new Float32Array(n * 4 * 3), uv = new Float32Array(n * 4 * 2), idx: number[] = [];
     for (let i = 0; i < n; i++) {
       const front = i % 3 === 0;
       const base = new THREE.Vector3(
@@ -84,27 +86,81 @@ export class Atmosphere {
         front ? -5.2 + Math.random() * 1.4 : -7 + Math.random() * 5,
         front ? 2 + Math.random() * 5 : -16 + Math.random() * 12,
       );
-      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, fog: true, rotation: Math.random() * 6 }));
       const sc = front ? 5 + Math.random() * 4 : 7 + Math.random() * 8;
-      s.scale.set(sc, sc * 0.6, 1);
-      s.position.copy(base);
-      this.clouds.push({ s, base, sp: 0.04 + Math.random() * 0.06, ph: Math.random() * 6, front });
-      this.group.add(s);
+      this.clouds.push({ base, sp: 0.04 + Math.random() * 0.06, ph: Math.random() * 6, front });
+      const rot = Math.random() * 6;
+      for (let k = 0; k < 4; k++) {
+        const cx = k === 0 || k === 3 ? -0.5 : 0.5, cy = k < 2 ? -0.5 : 0.5;
+        const rx = cx * Math.cos(rot) - cy * Math.sin(rot), ry = cx * Math.sin(rot) + cy * Math.cos(rot);
+        pos.set([base.x, base.y, base.z], (i * 4 + k) * 3);
+        // xy = canto já girado e escalado; z = 1 se nuvem da frente
+        corner.set([rx * sc, ry * sc * 0.6, front ? 1 : 0], (i * 4 + k) * 3);
+        uv.set([cx + 0.5, cy + 0.5], (i * 4 + k) * 2);
+      }
+      idx.push(i * 4, i * 4 + 1, i * 4 + 2, i * 4, i * 4 + 2, i * 4 + 3);
     }
+    const cg = new THREE.BufferGeometry();
+    this.cloudPos = new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage);
+    cg.setAttribute('position', this.cloudPos);
+    cg.setAttribute('corner', new THREE.BufferAttribute(corner, 3));
+    cg.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    cg.setIndex(idx);
+    this.cloudMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      fog: true,
+      uniforms: THREE.UniformsUtils.merge([
+        THREE.UniformsLib.fog,
+        { uMap: { value: tex }, uBack: { value: new THREE.Color() }, uFront: { value: new THREE.Color() } },
+      ]),
+      vertexShader: /* glsl */ `
+        attribute vec3 corner;
+        varying vec2 vUv; varying float vFront;
+        #include <fog_pars_vertex>
+        void main() {
+          vUv = uv;
+          vFront = corner.z;
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          mvPosition.xy += corner.xy; // billboard: sempre de frente para a câmera
+          gl_Position = projectionMatrix * mvPosition;
+          #include <fog_vertex>
+        }`,
+      fragmentShader: /* glsl */ `
+        uniform sampler2D uMap; uniform vec3 uBack; uniform vec3 uFront;
+        varying vec2 vUv; varying float vFront;
+        #include <fog_pars_fragment>
+        void main() {
+          vec4 t = texture2D(uMap, vUv);
+          gl_FragColor = vec4(mix(uBack, uFront, vFront) * t.rgb, t.a * mix(0.55, 0.9, vFront));
+          #include <colorspace_fragment>
+          #include <fog_fragment>
+        }`,
+    });
+    const clouds = new THREE.Mesh(cg, this.cloudMat);
+    clouds.frustumCulled = false;
+    clouds.renderOrder = 1;
+    this.group.add(clouds);
 
-    // feixes de luz atrás do dragão
+    // feixes de luz atrás do dragão (uma geometria só)
     const rayTex = makeRayTexture();
+    const rp: number[] = [], ru: number[] = [], ri: number[] = [];
     for (let i = 0; i < 4; i++) {
-      const m = new THREE.Mesh(
-        new THREE.PlaneGeometry(3 + i, 26),
-        new THREE.MeshBasicMaterial({ map: rayTex, color: '#ffe2a0', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide }),
-      );
-      m.position.set(-4 + i * 2.6, 6, -12 - i);
-      m.rotation.z = -0.35 + i * 0.22;
-      m.name = 'ray';
-      this.rays.push(m);
-      this.group.add(m);
+      const g = new THREE.PlaneGeometry(3 + i, 26);
+      g.rotateZ(-0.35 + i * 0.22);
+      g.translate(-4 + i * 2.6, 6, -12 - i);
+      const o = rp.length / 3;
+      rp.push(...(g.attributes.position!.array as Float32Array));
+      ru.push(...(g.attributes.uv!.array as Float32Array));
+      ri.push(...Array.from(g.index!.array, (v) => v + o));
     }
+    const rays = new THREE.BufferGeometry();
+    rays.setAttribute('position', new THREE.Float32BufferAttribute(rp, 3));
+    rays.setAttribute('uv', new THREE.Float32BufferAttribute(ru, 2));
+    rays.setIndex(ri);
+    this.rayMat = new THREE.MeshBasicMaterial({ map: rayTex, color: '#ffe2a0', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide });
+    const rayMesh = new THREE.Mesh(rays, this.rayMat);
+    rayMesh.name = 'ray';
+    this.group.add(rayMesh);
 
     // luzes
     this.hemi = new THREE.HemisphereLight('#3f6a50', '#5a3a14', 0.5);
@@ -114,11 +170,8 @@ export class Atmosphere {
     this.rim.position.set(-4, 7, -10);
     this.top = new THREE.DirectionalLight('#dfe8ff', 1.1); // lua/topo: projeta sombras
     this.top.position.set(1.5, 12, 5);
-    this.flash = new THREE.DirectionalLight('#cfe0ff', 0);
-    this.flash.position.set(-3, 10, 6);
-    this.balls = new THREE.PointLight('#ff9a3a', 0, 30, 1.6);
-    this.balls.position.set(0, -3.5, 4.5);
-    if (quality !== 'low') {
+    // (relâmpago e brilho das esferas modulam estas luzes — menos luzes = menos uniforms por quadro)
+    if (quality === 'high') {
       this.top.castShadow = true;
       const sz = quality === 'high' ? 2048 : 1024;
       this.top.shadow.mapSize.set(sz, sz);
@@ -127,7 +180,7 @@ export class Atmosphere {
       this.top.shadow.bias = -0.0006;
       this.top.shadow.normalBias = 0.03;
     }
-    this.group.add(this.hemi, this.key, this.rim, this.top, this.flash, this.balls);
+    this.group.add(this.hemi, this.key, this.rim, this.top);
   }
 
   update(inp: DragonInput, scene: THREE.Scene) {
@@ -145,26 +198,25 @@ export class Atmosphere {
 
     (this.stars.material as THREE.PointsMaterial).opacity = (1 - sstep(0.4, 1.3, mood)) * (0.7 + 0.3 * Math.sin(t * 1.4));
 
-    const lit = this.c1.set('#ffb35c');
-    for (const c of this.clouds) {
-      c.s.position.set(c.base.x + Math.sin(t * c.sp + c.ph) * 1.4, c.base.y + Math.cos(t * c.sp * 0.7 + c.ph) * 0.3, c.base.z);
-      const m = c.s.material as THREE.SpriteMaterial;
-      // nuvens de baixo pegam a luz dourada das esferas
-      m.color.copy(this.c2).multiplyScalar(1.6).lerp(lit, (c.front ? 0.45 : 0.12) * (0.3 + 0.7 * Math.max(inp.glow * 0.6, inp.appear, inp.summon)));
-      m.color.lerp(this.c3.set('#ffffff'), inp.flash * 0.6);
-      m.opacity = c.front ? 0.9 : 0.55;
-    }
-    const rayA = 0.035 * inp.appear + 0.03 * inp.summon + 0.12 * inp.wish;
-    this.rays.forEach((r, i) => {
-      (r.material as THREE.MeshBasicMaterial).opacity = rayA * (0.6 + 0.4 * Math.sin(t * 0.7 + i * 1.7));
+    // nuvens: deriva lenta; as de baixo pegam a luz dourada das esferas; relâmpago clareia
+    const arr = this.cloudPos.array as Float32Array;
+    this.clouds.forEach((c, i) => {
+      const x = c.base.x + Math.sin(t * c.sp + c.ph) * 1.4, y = c.base.y + Math.cos(t * c.sp * 0.7 + c.ph) * 0.3;
+      for (let k = 0; k < 4; k++) arr.set([x, y, c.base.z], (i * 4 + k) * 3);
     });
+    this.cloudPos.needsUpdate = true;
+    const energy = 0.3 + 0.7 * Math.max(inp.glow * 0.6, inp.appear, inp.summon);
+    const lit = new THREE.Color('#ffb35c');
+    const white = new THREE.Color('#ffffff');
+    (this.cloudMat.uniforms.uBack!.value as THREE.Color).copy(this.c2).multiplyScalar(1.6).lerp(lit, 0.12 * energy).lerp(white, inp.flash * 0.6);
+    (this.cloudMat.uniforms.uFront!.value as THREE.Color).copy(this.c2).multiplyScalar(1.6).lerp(lit, 0.45 * energy).lerp(white, inp.flash * 0.6);
+    this.rayMat.opacity = 0.035 * inp.appear + 0.03 * inp.summon + 0.12 * inp.wish;
 
-    this.key.intensity = 0.4 + 1.3 * inp.appear + 1.2 * inp.wish;
-    this.rim.intensity = 0.8 + 2.4 * inp.appear;
-    this.top.intensity = 0.4 + 0.8 * inp.appear;
-    this.flash.intensity = 7 * inp.flash;
-    this.balls.intensity = 30 * (0.2 + 0.5 * inp.glow + 0.6 * inp.summon) * (1 - 0.5 * inp.appear) + 20 * inp.wish;
-    this.hemi.intensity = 0.35 + 0.35 * inp.appear;
+    // luz-chave dourada (as esferas lá embaixo) + clarão branco-azulado do relâmpago na luz de topo
+    this.key.intensity = 0.4 + 1.3 * inp.appear + 1.2 * inp.wish + 0.6 * inp.glow * (1 - inp.appear);
+    this.rim.intensity = 0.8 + 2.4 * inp.appear + 2 * inp.flash;
+    this.top.intensity = 0.4 + 0.8 * inp.appear + 6 * inp.flash;
+    this.hemi.intensity = 0.35 + 0.35 * inp.appear + 0.8 * inp.flash;
     this.fog.density = 0.026 + 0.012 * (1 - inp.appear);
   }
 }

@@ -1,4 +1,4 @@
-.PHONY: dragon-build dragon-viewer dragon-shot icon
+.PHONY: dragon-build dragon-viewer dragon-shot icon voice-setup check-keys
 .PHONY: help install install-server install-mobile setup-env up up-mock server server-mock mobile mobile-clear mobile-tunnel \
         gen-voice gen-sfx test typecheck lan-ip fix-inotify-watchers mobile-eas-auth-check \
         mobile-build-ios mobile-build-android mobile-build-all
@@ -33,7 +33,8 @@ help: ## Mostra esta ajuda
 	@echo "$(YELLOW)  make dragon-viewer$(NC) Abre o viewer 3D em http://localhost:8099/tools/viewer/index.html#anim=1"
 	@echo "$(YELLOW)  make dragon-shot  $(NC) Renderiza PNGs de inspeção (Chrome headless) em /tmp/shenlong-shots"
 	@echo "$(YELLOW)  make icon         $(NC) Renderiza o ícone/adaptive-icon a partir do modelo 3D"
-	@echo "$(YELLOW)  make gen-voice    $(NC) Pré-gera as frases fixas de Shenlong (precisa OPENAI_API_KEY)"
+	@echo "$(YELLOW)  make voice-setup  $(NC) Instala a voz grátis local (Piper pt-BR) — usada quando não há OPENAI_API_KEY"
+	@echo "$(YELLOW)  make gen-voice    $(NC) Regera as frases fixas de Shenlong com a voz de dragão"
 	@echo "$(YELLOW)  make gen-sfx      $(NC) Regenera os efeitos sonoros sintetizados"
 	@echo "$(YELLOW)  make test         $(NC) Testes (mobile + server)  | make typecheck: tsc nos dois"
 	@echo ""
@@ -43,6 +44,7 @@ help: ## Mostra esta ajuda
 
 # ───────── setup ─────────
 install: install-server install-mobile setup-env ## Instala tudo
+	@$(MAKE) --no-print-directory voice-setup || echo "$(YELLOW)⚠️  voz local não instalada (precisa de uv); Shenlong usa a voz da OpenAI ou a do aparelho$(NC)"
 
 install-server:
 	@cd server && npm install
@@ -75,7 +77,27 @@ mobile-clear: ## Expo com cache limpo
 mobile-tunnel: ## Expo via túnel (redes restritas; o backend precisa de EXPO_PUBLIC_API_URL público)
 	@cd mobile && npx expo start --clear --go --tunnel
 
-up: setup-env ## Backend + Expo juntos
+UV := $(shell command -v uv 2>/dev/null || echo $(HOME)/.local/bin/uv)
+VOICE_DIR := tools/voice
+voice-setup: ## Voz local grátis: Piper (pt-BR masculina) num venv isolado + modelo
+	@test -x "$(UV)" || { echo "$(RED)❌ precisa do uv (https://docs.astral.sh/uv/)$(NC)"; exit 1; }
+	@test -x $(VOICE_DIR)/.venv/bin/piper || { $(UV) venv -q --python 3.12 $(VOICE_DIR)/.venv && $(UV) pip install -q --python $(VOICE_DIR)/.venv/bin/python piper-tts; }
+	@test -f $(VOICE_DIR)/models/pt_BR-faber-medium.onnx || (cd $(VOICE_DIR) && mkdir -p models && cd models && ../.venv/bin/python -m piper.download_voices pt_BR-faber-medium)
+	@command -v ffmpeg >/dev/null || echo "$(YELLOW)⚠️  instale o ffmpeg (sudo apt install ffmpeg) para o efeito de voz de dragão$(NC)"
+	@echo "$(GREEN)✓ voz local pronta$(NC)"
+
+check-keys:
+	@if ! grep -qE '^OPENAI_API_KEY=.+' server/.env 2>/dev/null && ! grep -qE '^ANTHROPIC_API_KEY=.+' server/.env 2>/dev/null; then \
+	  echo ""; echo "$(RED)══════════════════════════════════════════════════════════════════$(NC)"; \
+	  echo "$(RED)  ⚠️  server/.env SEM CHAVE: Shenlong aparece e fala, mas NÃO entende$(NC)"; \
+	  echo "$(RED)     o que você diz nem conversa. Preencha OPENAI_API_KEY (uma chave$(NC)"; \
+	  echo "$(RED)     cobre ouvir, voz e conversa) e rode make up de novo.$(NC)"; \
+	  echo "$(RED)══════════════════════════════════════════════════════════════════$(NC)"; echo ""; \
+	elif ! grep -qE '^OPENAI_API_KEY=.+' server/.env; then \
+	  echo "$(YELLOW)⚠️  sem OPENAI_API_KEY: sem reconhecimento de fala (STT). Só a invocação por voz alta funciona.$(NC)"; \
+	fi
+
+up: setup-env check-keys ## Backend + Expo juntos
 	@test -d server/node_modules || $(MAKE) install-server
 	@test -d mobile/node_modules || $(MAKE) install-mobile
 	@echo "$(GREEN)🐉 Backend em http://$(LAN_IP):8787  |  Expo logo abaixo — leia o QR com o Expo Go$(NC)"

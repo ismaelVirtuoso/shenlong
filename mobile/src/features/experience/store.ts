@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { makeMutable } from 'react-native-reanimated';
 import { initialState, type MachineState } from '@/core/machine';
 import { defaultQuality, type Quality } from '@/core/quality';
+import { UNKNOWN, type BackendStatus } from '../conversation/health';
 
 export interface Caption {
   id: number;
@@ -30,6 +31,9 @@ interface Store {
   micDenied: boolean;
   quality: Quality;
   fx: Fx;
+  backend: BackendStatus;
+  /** última transcrição (painel de diagnóstico em dev) */
+  lastHeard: string;
   set: (p: Partial<Omit<Store, 'set'>>) => void;
   bump: (k: keyof Fx, extra?: Partial<Fx>) => void;
 }
@@ -40,6 +44,8 @@ export const useStore = create<Store>((set) => ({
   speaking: false,
   micDenied: false,
   quality: defaultQuality(),
+  backend: UNKNOWN,
+  lastHeard: '',
   fx: { bolt: 0, boltBig: false, wish: 0, heard: 0, missed: 0, poke: 0 },
   set: (p) => set(p),
   bump: (k, extra) => set((s) => ({ fx: { ...s.fx, ...extra, [k]: (s.fx[k] as number) + 1 } })),

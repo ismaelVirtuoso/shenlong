@@ -29,6 +29,7 @@ export function Overlay() {
       accessibilityLabel="Shenlong"
     >
       <View pointerEvents="none" style={[styles.fill, { paddingBottom: insets.bottom + 24, paddingTop: insets.top + 12 }]}>
+        {__DEV__ && <DevHud top={insets.top} />}
         {phase === 'boot' && <Boot />}
         {phase === 'altar' && <Altar micDenied={micDenied} />}
 
@@ -42,26 +43,42 @@ export function Overlay() {
   );
 }
 
+/** Diagnóstico (só em desenvolvimento): o que o servidor consegue e o que foi ouvido. */
+function DevHud({ top }: { top: number }) {
+  const b = useStore((s) => s.backend);
+  const heard = useStore((s) => s.lastHeard);
+  const ok = (v: boolean) => (v ? '✓' : '✗');
+  const line = b.reachable
+    ? `servidor ✓ · ouvir ${ok(b.stt)} · voz ${b.tts ? b.ttsEngine ?? '✓' : '✗'} · conversa ${ok(b.llm)}`
+    : 'servidor ✗ (inacessível — mesma rede Wi-Fi? make up rodando?)';
+  return (
+    <View style={[styles.hud, { top: top + 2 }]}>
+      <Text style={styles.hudText}>{line}</Text>
+      {b.reachable && (!b.stt || !b.llm) && <Text style={styles.hudWarn}>sem OPENAI_API_KEY em server/.env: ele não entende nem conversa</Text>}
+      {!!heard && <Text style={styles.hudText}>ouvi: “{heard}”</Text>}
+    </View>
+  );
+}
+
 function Boot() {
   const pulse = usePulse();
   return (
     <Animated.View entering={FadeIn.duration(1500).delay(600)} style={styles.bootWrap}>
       <Text style={styles.title}>SHENLONG</Text>
       <Text style={styles.subtitle}>Seu desejo, minha missão.</Text>
-      <View style={{ flex: 1 }} />
       <Text style={styles.bootText}>As sete Esferas do Dragão estão diante de você…</Text>
+      <View style={{ flex: 1 }} />
       <Animated.Text style={[styles.tap, pulse]}>Toque para continuar</Animated.Text>
     </Animated.View>
   );
 }
 
+/** Convite no topo da tela (as esferas ficam livres embaixo); some após alguns segundos e volta suave. */
 function Altar({ micDenied }: { micDenied: boolean }) {
   return (
-    <Animated.View entering={FadeIn.duration(900)} exiting={FadeOut.duration(400)} style={styles.altarWrap}>
-      <View style={{ flex: 1 }} />
-      <Text style={styles.say}>{micDenied ? 'Segure a tela para chamar' : 'Diga em voz alta:'}</Text>
+    <Animated.View entering={FadeIn.duration(900).delay(400)} exiting={FadeOut.duration(400)} style={styles.altarWrap}>
+      <Text style={styles.say}>{micDenied ? 'Segure a tela para chamar' : 'Diga em voz alta'}</Text>
       {!micDenied && <Text style={styles.quote}>“Shenlong, apareça!”</Text>}
-      <Text style={styles.hint}>{micDenied ? 'O microfone está desligado' : 'ou segure a tela por um instante'}</Text>
     </Animated.View>
   );
 }
@@ -134,17 +151,19 @@ function usePulse() {
 }
 
 const styles = StyleSheet.create({
+  hud: { position: 'absolute', top: 2, left: 8, right: 8, zIndex: 10 },
+  hudText: { color: 'rgba(200,220,255,0.75)', fontSize: 10 },
+  hudWarn: { color: 'rgba(255,190,120,0.9)', fontSize: 10 },
   fill: { flex: 1, paddingHorizontal: 22 },
   bottom: { position: 'absolute', left: 22, right: 22, bottom: 0, paddingBottom: 36, alignItems: 'center', gap: 18 },
   bootWrap: { flex: 1, alignItems: 'center' },
   title: { marginTop: 24, color: GOLD, fontSize: 40, fontWeight: '800', letterSpacing: 6, textShadowColor: '#ff8a00', textShadowRadius: 18 },
   subtitle: { color: '#9bb7ff', fontStyle: 'italic', fontSize: 15, marginTop: 4 },
-  bootText: { color: '#f3e9d2', fontSize: 17, textAlign: 'center', lineHeight: 24, textShadowColor: '#000', textShadowRadius: 8, marginBottom: 20 },
-  tap: { color: '#fff', fontSize: 14, letterSpacing: 2, marginBottom: 56 },
-  altarWrap: { flex: 1, alignItems: 'center' },
+  bootText: { color: '#f3e9d2', fontSize: 16, textAlign: 'center', lineHeight: 23, textShadowColor: '#000', textShadowRadius: 8, marginTop: 18, paddingHorizontal: 12 },
+  tap: { color: '#fff', fontSize: 14, letterSpacing: 2, marginBottom: 28 },
+  altarWrap: { alignItems: 'center', marginTop: '14%' },
   say: { color: '#f3e9d2', fontSize: 16, textShadowColor: '#000', textShadowRadius: 8 },
   quote: { color: GOLD, fontSize: 30, fontWeight: '700', marginTop: 6, textAlign: 'center', textShadowColor: '#ff8a00', textShadowRadius: 14 },
-  hint: { color: '#9aa3c4', fontSize: 12, marginTop: 8, marginBottom: 150 },
   status: { color: '#bcd6ff', fontSize: 15, letterSpacing: 1 },
   bubble: { maxWidth: '100%', paddingHorizontal: 20, paddingVertical: 14, borderRadius: 22, borderWidth: 1 },
   bubbleDragon: { backgroundColor: 'rgba(8,14,10,0.72)', borderColor: 'rgba(246,201,69,0.45)' },

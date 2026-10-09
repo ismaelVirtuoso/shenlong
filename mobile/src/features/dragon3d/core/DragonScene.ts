@@ -24,7 +24,7 @@ export class DragonScene {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.shadowMap.enabled = quality !== 'low';
+    renderer.shadowMap.enabled = quality === 'high'; // sombras só no perfil alto (iPhone); AO assado cobre os demais
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.setClearColor('#04050c', 1);
 

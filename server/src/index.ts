@@ -4,7 +4,7 @@ import { cors } from 'hono/cors';
 import { config } from './config.js';
 import { llmAvailable, streamReply, type Turn } from './providers/llm.js';
 import { sttAvailable, transcribe } from './providers/stt.js';
-import { synthesize, ttsAvailable } from './providers/tts.js';
+import { synthesize, ttsAvailable, ttsEngine } from './providers/tts.js';
 import { REDIRECT_INPUT, SAFE_OUTPUT, isUnsafe } from './safety.js';
 import { SentenceStream } from './sentences.js';
 
@@ -26,7 +26,7 @@ app.use('/api/*', async (c, next) => {
 });
 
 app.get('/health', (c) =>
-  c.json({ ok: true, mock: config.mock, stt: sttAvailable(), tts: ttsAvailable(), llm: llmAvailable() }),
+  c.json({ ok: true, mock: config.mock, stt: sttAvailable(), tts: ttsAvailable(), ttsEngine: ttsEngine(), llm: llmAvailable(), llmProvider: config.llmProvider }),
 );
 
 app.post('/api/stt', async (c) => {
@@ -49,7 +49,7 @@ app.post('/api/tts', async (c) => {
   if (!text || text.length > 400) return c.json({ error: 'bad_text' }, 400);
   try {
     const audio = await synthesize(text);
-    return new Response(audio, { headers: { 'content-type': 'audio/mpeg' } });
+    return new Response(new Uint8Array(audio), { headers: { 'content-type': audio.subarray(0, 4).toString() === 'RIFF' ? 'audio/wav' : 'audio/mpeg' } });
   } catch (e) {
     console.error('tts failed', (e as Error).message);
     return c.json({ error: 'tts_failed' }, 502);
@@ -109,5 +109,9 @@ app.post('/api/chat', async (c) => {
 });
 
 serve({ fetch: app.fetch, port: config.port, hostname: '0.0.0.0' }, (i) => {
-  console.log(`Shenlong server on :${i.port}  mock=${config.mock} stt=${sttAvailable()} tts=${ttsAvailable()} llm=${llmAvailable()}`);
+  console.log(`🐉 Shenlong server :${i.port}  ouvir(STT)=${sttAvailable()}  voz(TTS)=${ttsEngine() ?? 'nenhuma'}  conversa(IA)=${llmAvailable() ? config.llmProvider : 'não'}`);
+  if (!config.mock && (!sttAvailable() || !llmAvailable())) {
+    console.log('\n⚠️  SEM CHAVE DE API: Shenlong não consegue ouvir nem conversar.');
+    console.log('   Preencha OPENAI_API_KEY em server/.env (uma chave cobre ouvir, voz e conversa) e reinicie.\n');
+  }
 });

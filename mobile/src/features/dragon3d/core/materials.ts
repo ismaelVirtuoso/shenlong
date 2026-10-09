@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { makeBellyTextures, makeScaleTextures } from './textures';
+import { SPINE_GLSL, type SpineUniforms } from './tube';
 
 /** Uniforms globais compartilhados por todos os materiais do dragão (tempo, contraluz, energia). */
 export const shared = {
@@ -35,6 +36,26 @@ function base(params: THREE.MeshStandardMaterialParameters) {
   return new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0, ...params });
 }
 
+/** Uniforms da espinha do corpo: preenchidos pelo GpuTube (a textura real é trocada lá). */
+export const bodySpine: SpineUniforms = {
+  uSpine: { value: new THREE.DataTexture(new Float32Array(4 * 4), 1, 4, THREE.RGBAFormat, THREE.FloatType) },
+  uFlat: { value: 0.55 },
+  uUScale: { value: 1.15 },
+  uVRepeat: { value: 3 },
+};
+
+/** Material de profundidade (sombras) que aplica a mesma deformação da espinha. */
+export function createBodyDepthMaterial() {
+  const m = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+  m.onBeforeCompile = (s) => {
+    Object.assign(s.uniforms, bodySpine);
+    s.vertexShader = s.vertexShader
+      .replace('#include <common>', `#include <common>\n${SPINE_GLSL}`)
+      .replace('#include <begin_vertex>', 'vec3 tubeN;\nspineVertex(tubeN);\nvec3 transformed = gTubePos;');
+  };
+  return m;
+}
+
 export interface DragonMaterials {
   body: THREE.MeshStandardMaterial;
   head: THREE.MeshStandardMaterial;
@@ -50,13 +71,19 @@ export function createMaterials(): DragonMaterials {
   const scales = makeScaleTextures(256, 8);
   const belly = makeBellyTextures(128, 4);
 
-  // ── corpo: escamas por UV (u = ao longo do corpo) + placas ventrais ──
+  // ── corpo: deformado na GPU (ver GpuTube); escamas por UV (u = ao longo do corpo) + placas ventrais ──
   const body = base({ roughness: 0.5, normalMap: scales.normal, normalScale: new THREE.Vector2(1.1, 1.1) });
   body.onBeforeCompile = (s) => {
-    Object.assign(s.uniforms, shared, { uBellyN: { value: belly.normal }, uDet: { value: scales.detail }, uBellyDet: { value: belly.detail } });
+    Object.assign(s.uniforms, shared, bodySpine, { uBellyN: { value: belly.normal }, uDet: { value: scales.detail }, uBellyDet: { value: belly.detail } });
     s.vertexShader = s.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute float belly;\nvarying float vBelly;\nvarying vec2 vBodyUv;')
-      .replace('#include <uv_vertex>', '#include <uv_vertex>\nvBelly = belly;\nvBodyUv = uv;');
+      .replace('#include <common>', `#include <common>\n${SPINE_GLSL}\nattribute float belly;\nvarying float vBelly;\nvarying vec2 vBodyUv;`)
+      .replace('#include <beginnormal_vertex>', 'vec3 objectNormal;\nspineVertex(objectNormal);')
+      .replace('#include <begin_vertex>', `vec3 transformed = gTubePos;
+        vBelly = belly;
+        vBodyUv = gTubeUv;
+        #ifdef USE_NORMALMAP
+          vNormalMapUv = gTubeUv;
+        #endif`);
     s.fragmentShader = s.fragmentShader
       .replace('#include <common>', `#include <common>\n${COMMON_FRAG}\nuniform sampler2D uBellyN;\nuniform sampler2D uDet;\nuniform sampler2D uBellyDet;\nvarying float vBelly;\nvarying vec2 vBodyUv;`)
       .replace('#include <color_fragment>', `#include <color_fragment>

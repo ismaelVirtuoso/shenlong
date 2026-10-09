@@ -1,1 +1,3 @@
 tools/viewer/dist/
+tools/voice/.venv/
+tools/voice/models/

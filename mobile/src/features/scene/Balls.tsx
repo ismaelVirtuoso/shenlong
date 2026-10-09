@@ -19,7 +19,7 @@ function starCenters(n: number): { x: number; y: number }[] {
 }
 
 function starsPath(n: number) {
-  const p = Skia.Path.Make();
+  const p = Skia.PathBuilder.Make();
   const r = n === 1 ? 0.5 : n <= 3 ? 0.3 : n <= 5 ? 0.25 : 0.2;
   for (const c of starCenters(n)) {
     for (let k = 0; k < 10; k++) {
@@ -32,7 +32,7 @@ function starsPath(n: number) {
     }
     p.close();
   }
-  return p;
+  return p.build();
 }
 
 interface Pose {

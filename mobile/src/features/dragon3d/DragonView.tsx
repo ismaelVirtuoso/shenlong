@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Platform, StyleSheet } from 'react-native';
+import { Platform, StyleSheet, useWindowDimensions } from 'react-native';
 import { GLView, type ExpoWebGLRenderingContext } from 'expo-gl';
 import * as THREE from 'three';
 import { DragonScene } from './core/DragonScene';
@@ -7,6 +7,9 @@ import type { QualityLevel } from './core/types';
 import { loadDragonAsset } from './loadAsset';
 import { DragonTimeline } from './timeline';
 import { useStore } from '../experience/store';
+
+/** Log de desempenho: em dev, ou com EXPO_PUBLIC_PROFILE=1 (útil com --no-dev para medir o real). */
+const PROFILE = __DEV__ || process.env.EXPO_PUBLIC_PROFILE === '1';
 
 /** Qualidade inicial por plataforma; o loop rebaixa (desliga sombras) se o FPS cair. */
 const initialQuality = (): QualityLevel => {
@@ -25,11 +28,34 @@ function patchGl(gl: ExpoWebGLRenderingContext) {
 }
 
 /**
+ * O expo-gl (SDK 57) faz WebGL2RenderingContext herdar de WebGLRenderingContext (como na especificação),
+ * mas o three.js ≥ r163 rejeita qualquer `instanceof WebGLRenderingContext` como "WebGL 1".
+ * O contexto é WebGL2 de verdade (`supportsWebGL2`), então escondemos a classe só durante a construção.
+ */
+function createRenderer(gl: ExpoWebGLRenderingContext, canvas: unknown) {
+  const g = globalThis as { WebGLRenderingContext?: unknown };
+  const native = Platform.OS !== 'web';
+  if (native && (gl as unknown as { supportsWebGL2?: boolean }).supportsWebGL2 === false) throw new Error('GLES 3 indisponível');
+  const saved = g.WebGLRenderingContext;
+  if (native) g.WebGLRenderingContext = undefined;
+  try {
+    return new THREE.WebGLRenderer({ canvas: canvas as HTMLCanvasElement, context: gl as unknown as WebGL2RenderingContext, antialias: true });
+  } finally {
+    if (native) g.WebGLRenderingContext = saved;
+  }
+}
+
+/**
  * Camada 3D (fundo): céu, nuvens e o Shenlong em three.js sobre expo-gl.
  * A camada Skia (esferas, pilar, relâmpagos) e a UI ficam por cima.
  */
+/** fração da resolução nativa em que o GL desenha (o resultado é ampliado p/ a tela inteira) */
+const RENDER_SCALE: Record<QualityLevel, number> = { high: 1, medium: 0.8, low: 0.65 };
+
 export function DragonView() {
   const raf = useRef<number | null>(null);
+  const { width: W, height: H } = useWindowDimensions();
+  const scale = Platform.OS === 'web' ? 1 : RENDER_SCALE[initialQuality()];
   const alive = useRef(true);
 
   useEffect(() => {
@@ -53,7 +79,13 @@ export function DragonView() {
       width: w, height: h, style: {}, clientWidth: w, clientHeight: h,
       addEventListener: () => {}, removeEventListener: () => {}, getContext: () => gl,
     };
-    const renderer = new THREE.WebGLRenderer({ canvas: canvas as unknown as HTMLCanvasElement, context: gl as unknown as WebGL2RenderingContext, antialias: true });
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = createRenderer(gl, canvas);
+    } catch (e) {
+      console.warn('[dragon3d] WebGL2 indisponível neste aparelho', e);
+      return;
+    }
     renderer.setPixelRatio(1);
 
     let scene: DragonScene;
@@ -65,8 +97,11 @@ export function DragonView() {
     }
     const timeline = new DragonTimeline();
     if (__DEV__) console.log('[dragon3d] buffer', w, h);
-    let frames = 0, slowSum = 0, degraded = false;
+    let frames = 0, slowSum = 0, degraded = false, frameCost = 0;
     let bw = w, bh = h;
+    let skip = 0;
+    let statN = 0, statSum = 0;
+    let pUpdate = 0, pRender = 0, pEnd = 0, workSum = 0;
     let last = performance.now();
 
     const loop = () => {
@@ -78,6 +113,17 @@ export function DragonView() {
       const now = performance.now();
       const dt = now - last;
       last = now;
+      if (PROFILE) {
+        statN++;
+        statSum += dt;
+        if (statSum > 5000) {
+          const f = (v: number) => (v / statN).toFixed(0);
+          console.log(`[dragon3d] ${(1000 / (statSum / statN)).toFixed(1)} fps · update ${f(pUpdate)} ms · render ${f(pRender)} ms · endFrame ${f(pEnd)} ms · calls ${renderer.info.render.calls} · tri ${renderer.info.render.triangles}`);
+          pUpdate = pRender = pEnd = 0;
+          statN = 0;
+          statSum = 0;
+        }
+      }
       // o buffer pode mudar (rotação, layout tardio no web)
       const [cw, ch] = bufferSize();
       if (cw !== bw || ch !== bh) {
@@ -86,31 +132,66 @@ export function DragonView() {
         scene.setSize(bw, bh);
       }
       const inp = timeline.sample(now);
-      scene.update(inp);
-      scene.render();
-      gl.endFrameEXP();
-      // rebaixamento automático: se o dragão presente roda abaixo de ~35 fps, desliga sombras
-      if (!degraded && inp.appear > 0.95 && renderer.shadowMap.enabled) {
-        frames++;
-        slowSum += dt;
-        if (frames === 90) {
-          if (slowSum / frames > 28) {
-            renderer.shadowMap.enabled = false;
-            scene.scene.traverse((o) => {
-              const m = (o as THREE.Mesh).material as THREE.Material | undefined;
-              if (m) m.needsUpdate = true;
-            });
-            degraded = true;
-            if (__DEV__) console.log('[dragon3d] FPS baixo: sombras desligadas');
-          }
-          frames = 0;
-          slowSum = 0;
-        }
+      // sem dragão nem invocação (boot/altar): só céu e nuvens lentas → ~20 fps bastam
+      skip = (skip + 1) % 3;
+      if (inp.appear < 0.001 && inp.summon < 0.001 && inp.flash < 0.01 && skip !== 0) {
+        raf.current = requestAnimationFrame(loop);
+        return;
       }
-      raf.current = requestAnimationFrame(loop);
+      const t0 = performance.now();
+      scene.update(inp);
+      const t1 = performance.now();
+      scene.render();
+      const t2 = performance.now();
+      gl.endFrameEXP();
+      const t3 = performance.now();
+      workSum += t3 - t0;
+      if (PROFILE) {
+        pUpdate += t1 - t0;
+        pRender += t2 - t1;
+        pEnd += t3 - t2;
+      }
+      // rebaixamento automático: mede ~2 s de quadros; se lento, desliga sombras
+      frames++;
+      slowSum += dt;
+      if (frames >= 60 || slowSum > 2000) {
+        const avg = workSum / frames;
+        workSum = 0;
+        if (!degraded && avg > 30 && renderer.shadowMap.enabled) {
+          renderer.shadowMap.enabled = false;
+          scene.scene.traverse((o) => {
+            const m = (o as THREE.Mesh).material as THREE.Material | undefined;
+            if (m) m.needsUpdate = true;
+          });
+          degraded = true;
+          if (__DEV__) console.log(`[dragon3d] ${avg.toFixed(0)} ms/quadro: sombras desligadas`);
+        }
+        frameCost = avg;
+        frames = 0;
+        slowSum = 0;
+      }
+      const work = t3 - t0;
+      if (frameCost > 50 && work > 50) {
+        // aparelho lento: metade do tempo para o resto do app (rede, voz, timers)
+        raf.current = null;
+        setTimeout(() => {
+          if (alive.current) raf.current = requestAnimationFrame(loop);
+          else loop();
+        }, Math.min(400, work));
+      } else {
+        raf.current = requestAnimationFrame(loop);
+      }
     };
     loop();
   };
 
-  return <GLView style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} msaaSamples={4} />;
+  if (scale === 1) return <GLView style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} msaaSamples={4} />;
+  const w = Math.round(W * scale), h = Math.round(H * scale);
+  return (
+    <GLView
+      style={{ position: 'absolute', width: w, height: h, left: (W - w) / 2, top: (H - h) / 2, transform: [{ scale: 1 / scale }] }}
+      onContextCreate={onContextCreate}
+      msaaSamples={4}
+    />
+  );
 }
