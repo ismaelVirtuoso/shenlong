@@ -97,7 +97,7 @@ export function DragonView() {
     }
     const timeline = new DragonTimeline();
     if (__DEV__) console.log('[dragon3d] buffer', w, h);
-    let frames = 0, slowSum = 0, degraded = false, frameCost = 0;
+    let frames = 0, slowSum = 0, frameCost = 0;
     let bw = w, bh = h;
     let skip = 0;
     let statN = 0, statSum = 0;
@@ -131,6 +131,11 @@ export function DragonView() {
         bh = ch;
         scene.setSize(bw, bh);
       }
+      // caçada: o app é o radar; o 3D fica parado (poupa bateria)
+      if (useStore.getState().m.phase === 'hunt') {
+        raf.current = requestAnimationFrame(loop);
+        return;
+      }
       const inp = timeline.sample(now);
       // sem dragão nem invocação (boot/altar): só céu e nuvens lentas → ~20 fps bastam
       skip = (skip + 1) % 3;
@@ -151,22 +156,12 @@ export function DragonView() {
         pRender += t2 - t1;
         pEnd += t3 - t2;
       }
-      // rebaixamento automático: mede ~2 s de quadros; se lento, desliga sombras
+      // custo médio do quadro (~2 s): em aparelho lento, cede tempo ao resto do app (abaixo)
       frames++;
       slowSum += dt;
       if (frames >= 60 || slowSum > 2000) {
-        const avg = workSum / frames;
+        frameCost = workSum / frames;
         workSum = 0;
-        if (!degraded && avg > 30 && renderer.shadowMap.enabled) {
-          renderer.shadowMap.enabled = false;
-          scene.scene.traverse((o) => {
-            const m = (o as THREE.Mesh).material as THREE.Material | undefined;
-            if (m) m.needsUpdate = true;
-          });
-          degraded = true;
-          if (__DEV__) console.log(`[dragon3d] ${avg.toFixed(0)} ms/quadro: sombras desligadas`);
-        }
-        frameCost = avg;
         frames = 0;
         slowSum = 0;
       }

@@ -84,6 +84,7 @@ export class DragonTimeline {
     switch (phase) {
       case 'boot':
         break;
+      case 'hunt':
       case 'altar':
         summon.run(now, [{ to: 0, dur: 700 }]);
         appear.run(now, [{ to: 0, dur: 700 }]);

@@ -5,8 +5,9 @@ import type { DragonAsset } from './glb';
 import { createMaterials, shared } from './materials';
 import type { DragonInput, QualityLevel } from './types';
 
-export const CAMERA_POS = new THREE.Vector3(0, 1.6, 15.5);
-const CAMERA_TARGET = new THREE.Vector3(0, 1.3, 0);
+// câmera afastada o bastante para o corpo inteiro (≈ 7 de largura) caber numa tela em pé
+export const CAMERA_POS = new THREE.Vector3(0.35, 0.4, 20); // um pouco abaixo: olhando para cima, mais imponente
+const CAMERA_TARGET = new THREE.Vector3(0.35, 1.1, 0);
 
 /**
  * Cena 3D do Shenlong (three.js puro, sem React): roda no app (expo-gl) e no viewer de testes (WebGL).
@@ -24,8 +25,7 @@ export class DragonScene {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.shadowMap.enabled = quality === 'high'; // sombras só no perfil alto (iPhone); AO assado cobre os demais
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.enabled = false; // ver atmosphere.ts: o AO assado cobre o contato
     renderer.setClearColor('#04050c', 1);
 
     this.camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 200);

@@ -53,7 +53,7 @@ function addIconProps(scene: DragonScene) {
   ball.add(sphere);
   const star = new THREE.Shape();
   for (let k = 0; k < 10; k++) {
-    const a = -Math.PI / 2 + (k * Math.PI) / 5, r = k % 2 ? 0.075 : 0.18;
+    const a = -Math.PI / 2 + (k * Math.PI) / 5, r = k % 2 ? 0.084 : 0.2; // mesmo tamanho das estrelas do app (stars.ts)
     k ? star.lineTo(Math.cos(a) * r, -Math.sin(a) * r) : star.moveTo(Math.cos(a) * r, -Math.sin(a) * r);
   }
   const starGeo = new THREE.ShapeGeometry(star);

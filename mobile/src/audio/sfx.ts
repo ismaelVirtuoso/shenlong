@@ -11,6 +11,9 @@ const SOURCES = {
   chime: require('../../assets/sfx/chime.wav'),
   ping: require('../../assets/sfx/ping.wav'),
   listen: require('../../assets/sfx/listen.wav'),
+  radar: require('../../assets/sfx/radar.wav'),
+  radarOn: require('../../assets/sfx/radarOn.wav'),
+  gather: require('../../assets/sfx/gather.wav'),
 } as const;
 
 export type SfxName = keyof typeof SOURCES;

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { DragonInput, QualityLevel } from './types';
 import { makeCloudTexture, makeRayTexture } from './textures';
+import { createLandscape } from './landscape';
 
 const sstep = (a: number, b: number, x: number) => {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
@@ -73,6 +74,8 @@ export class Atmosphere {
     sg.setAttribute('position', new THREE.BufferAttribute(sp, 3));
     this.stars = new THREE.Points(sg, new THREE.PointsMaterial({ color: '#ffffff', size: 1.6, sizeAttenuation: false, transparent: true, fog: false, depthWrite: false }));
     this.group.add(this.stars);
+
+    this.group.add(createLandscape(quality));
 
     // nuvens: uma única malha de quads com billboard no vertex shader (1 draw call), em profundidades
     // diferentes, intercaladas com as voltas do corpo
@@ -171,15 +174,8 @@ export class Atmosphere {
     this.top = new THREE.DirectionalLight('#dfe8ff', 1.1); // lua/topo: projeta sombras
     this.top.position.set(1.5, 12, 5);
     // (relâmpago e brilho das esferas modulam estas luzes — menos luzes = menos uniforms por quadro)
-    if (quality === 'high') {
-      this.top.castShadow = true;
-      const sz = quality === 'high' ? 2048 : 1024;
-      this.top.shadow.mapSize.set(sz, sz);
-      const c = this.top.shadow.camera;
-      c.left = -9; c.right = 9; c.top = 10; c.bottom = -10; c.near = 1; c.far = 40;
-      this.top.shadow.bias = -0.0006;
-      this.top.shadow.normalBias = 0.03;
-    }
+    // sem sombras projetadas: no iPhone custavam quadros (travadas no Expo Go) e deixavam uma mancha
+    // retangular no corpo; o AO assado no modelo já dá o sombreamento de contato
     this.group.add(this.hemi, this.key, this.rim, this.top);
   }
 

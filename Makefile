@@ -165,8 +165,8 @@ dragon-shot: ## PNGs de inspeção: pose final, aparição, rosto
 icon: ## Ícone 1024 + adaptive icon renderizados do modelo 3D
 	@tools/viewer/build.sh && mkdir -p $(SHOTS)
 	@(python3 -m http.server 8099 --bind 127.0.0.1 >/dev/null 2>&1 & echo $$! > $(SHOTS)/.srv); sleep 1; \
-	  tools/viewer/shoot.sh $(SHOTS)/icon_raw.png "appear=1&t=8000&speak=0.38&wish=0.25&yaw=-38&pitch=-14&dist=6.0&icon=1&bx=-0.6&by=-0.75&bs=0.34" 1024x1024 >/dev/null; \
-	  tools/viewer/shoot.sh $(SHOTS)/adaptive_raw.png "appear=1&t=8000&speak=0.38&wish=0.25&yaw=-38&pitch=-14&dist=8.6&icon=1&bx=-0.45&by=-0.55&bs=0.26" 1024x1024 >/dev/null; \
+	  tools/viewer/shoot.sh $(SHOTS)/icon_raw.png "appear=1&t=8000&speak=0.38&wish=0.25&yaw=-32&pitch=-10&dist=10&icon=1&bx=-0.8&by=-0.95&bs=0.4" 1024x1024 >/dev/null; \
+	  tools/viewer/shoot.sh $(SHOTS)/adaptive_raw.png "appear=1&t=8000&speak=0.38&wish=0.25&yaw=-32&pitch=-10&dist=13&icon=1&bx=-0.6&by=-0.75&bs=0.32" 1024x1024 >/dev/null; \
 	  kill $$(cat $(SHOTS)/.srv); \
 	  python3 tools/viewer/finish_icon.py $(SHOTS)/icon_raw.png mobile/assets/icon.png && \
 	  python3 tools/viewer/finish_icon.py $(SHOTS)/adaptive_raw.png mobile/assets/adaptive-icon.png && echo "$(GREEN)✓ ícones atualizados$(NC)"

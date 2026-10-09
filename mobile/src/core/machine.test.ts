@@ -3,9 +3,11 @@ import { Event, initialState, isMicOpen, MachineState, transition } from './mach
 const run = (events: Event[], s: MachineState = initialState) => events.reduce(transition, s);
 
 describe('machine', () => {
-  it('fluxo feliz até a despedida e retorno ao altar', () => {
+  it('fluxo feliz: caçada → altar → desejo → esferas espalhadas (nova caçada)', () => {
     const s = run([
       { type: 'START' },
+      { type: 'INVOKE' }, // ignorado: ainda não tem as 7 esferas
+      { type: 'ALL_FOUND' },
       { type: 'INVOKE' },
       { type: 'SUMMON_DONE' },
       { type: 'APPEAR_DONE' },
@@ -25,24 +27,26 @@ describe('machine', () => {
       ],
       s,
     );
-    expect(end.phase).toBe('altar');
+    expect(end.phase).toBe('hunt');
     expect(end.wishes).toBe(0);
   });
 
   it('ignora eventos inválidos para a fase', () => {
     expect(run([{ type: 'INVOKE' }]).phase).toBe('boot');
-    expect(run([{ type: 'START' }, { type: 'UTTERANCE' }]).phase).toBe('altar');
-    expect(run([{ type: 'START' }, { type: 'INVOKE' }, { type: 'INVOKE' }]).phase).toBe('summoning');
+    expect(run([{ type: 'START' }, { type: 'INVOKE' }]).phase).toBe('hunt'); // sem as 7 esferas não invoca
+    expect(run([{ type: 'START' }, { type: 'ALL_FOUND' }, { type: 'UTTERANCE' }]).phase).toBe('altar');
+    expect(run([{ type: 'START' }, { type: 'ALL_FOUND' }, { type: 'INVOKE' }, { type: 'INVOKE' }]).phase).toBe('summoning');
   });
 
   it('falar durante a invocação não interrompe a sequência', () => {
-    const s = run([{ type: 'START' }, { type: 'INVOKE' }, { type: 'UTTERANCE' }, { type: 'INTERRUPT' }]);
+    const s = run([{ type: 'START' }, { type: 'ALL_FOUND' }, { type: 'INVOKE' }, { type: 'UTTERANCE' }, { type: 'INTERRUPT' }]);
     expect(s.phase).toBe('summoning');
   });
 
   it('toque interrompe a fala e volta a ouvir', () => {
     const s = run([
       { type: 'START' },
+      { type: 'ALL_FOUND' },
       { type: 'INVOKE' },
       { type: 'SUMMON_DONE' },
       { type: 'APPEAR_DONE' },
@@ -57,6 +61,7 @@ describe('machine', () => {
   it('silêncio: 1º timeout pergunta, 2º despede', () => {
     const listening = run([
       { type: 'START' },
+      { type: 'ALL_FOUND' },
       { type: 'INVOKE' },
       { type: 'SUMMON_DONE' },
       { type: 'APPEAR_DONE' },
@@ -71,6 +76,7 @@ describe('machine', () => {
   it('falha da IA vira fala e volta a ouvir', () => {
     const s = run([
       { type: 'START' },
+      { type: 'ALL_FOUND' },
       { type: 'INVOKE' },
       { type: 'SUMMON_DONE' },
       { type: 'APPEAR_DONE' },
@@ -82,9 +88,9 @@ describe('machine', () => {
     expect(s.phase).toBe('listening');
   });
 
-  it('background volta ao altar (exceto no boot)', () => {
+  it('background volta à caçada (exceto no boot)', () => {
     expect(run([{ type: 'BACKGROUND' }]).phase).toBe('boot');
-    expect(run([{ type: 'START' }, { type: 'INVOKE' }, { type: 'BACKGROUND' }]).phase).toBe('altar');
+    expect(run([{ type: 'START' }, { type: 'ALL_FOUND' }, { type: 'INVOKE' }, { type: 'BACKGROUND' }]).phase).toBe('hunt');
   });
 
   it('mic aberto só no altar e na escuta', () => {

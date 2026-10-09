@@ -1,8 +1,8 @@
-> **Estado atual (decisão final): estilo anime desenhado, 2D em Skia.** Depois de testar o 3D em aparelho,
-> o dono do projeto pediu o visual do próprio Dragon Ball (referência: Shenlong de frente, corpo enrolado,
-> aura verde, rochas e nuvens). Ver a seção 8. As seções 1–7 registram a fase 3D (histórico).
+> **Estado atual: 3D em tempo real (three.js + expo-gl), seção 9.** A versão anime em 2D (seção 8) foi
+> testada e rejeitada ("a versão 3D estava muito melhor"); o 3D voltou e foi refinado pela referência do anime.
+> As seções 1–7 registram a primeira fase 3D; a 8, a tentativa em 2D (histórico).
 
-# Visual do Shenlong: do 2D amador ao 3D, e a decisão final pelo estilo anime
+# Visual do Shenlong: do 2D amador ao 3D, o desvio pelo anime e a volta ao 3D
 
 ## 1. Auditoria da implementação atual
 | Item | Como está | Veredito |
@@ -51,7 +51,7 @@ A baixa qualidade não é falta de detalhe: é a **técnica**. Um desenho 2D fro
 | Inspeção | `tools/viewer/` | Mesmo código da cena renderizado em Chrome headless (`make dragon-shot`, `make dragon-viewer`) |
 | Ícone | `make icon` | Render do próprio modelo (close 3/4 rugindo, olho aceso, esfera de 4 estrelas 3D) + bloom/vinheta; `adaptive-icon.png` com respiro para a zona segura |
 
-Imagens (renders reais, Chrome/SwiftShader): `docs/img/pose-final.jpg`, `docs/img/aparicao.jpg`, `docs/img/boca.jpg`, `docs/img/qualidade-media-baixa.jpg`.
+Imagem atual (render real, Chrome/SwiftShader): `docs/img/shenlong-3d.jpg`.
 
 ## 5. Validação feita
 - Renders inspecionados em 6 rodadas (vista frontal, 3/4, lateral, close da boca, aparição em 5 quadros, perfis médio/baixo). Defeitos encontrados e corrigidos: cara de "sapo" (olhos saltados, focinho curto), escala da cabeça, bigodes em zigue-zague (escala da cabeça e espaçamento não uniforme da forma de repouso), céu bege (halo largo), escamas grandes demais, boca com escamas e contraluz, corte plano na traseira da mandíbula, caminho saindo do quadro, coluna da raiz fina demais.
@@ -70,7 +70,7 @@ Imagens (renders reais, Chrome/SwiftShader): `docs/img/pose-final.jpg`, `docs/im
 3. Para subir de patamar: encomendar a cabeça esculpida (ZBrush/Blender) exportada como GLB com os mesmos nomes; o resto da cena continua igual.
 
 
-## 8. Decisão final: estilo anime (2D vetorial no Skia)
+## 8. Tentativa em estilo anime (2D vetorial no Skia) — rejeitada, ver seção 9
 
 **Por quê:** o anime é o visual que a criança reconhece como "o Shenlong"; o 3D procedural nunca chegaria ao
 traço do desenho, e custava caro: three.js no thread JS, GLB de 4,5 MB, ~250 ms/quadro no emulador.
@@ -95,3 +95,21 @@ emulador), Shenlong presente 48 ms; GPU 18 ms. Lições registradas no código:
 - centenas de caminhos estáticos por quadro → rasterizados uma vez em textura.
 
 **Removido do app:** `three`, `expo-gl`, o GLB e o pipeline 3D (continuam no histórico do git, commit `802c1d2`).
+
+
+## 9. Volta ao 3D e refinamento pela referência do anime (estado atual)
+
+Restaurado o 3D do commit `802c1d2` e ajustado à referência (Shenlong do anime: verde-limão, barriga pêssego
+com a linha vermelha, galhada marrom, olhos vermelhos amendoados, juba em tufos, bigodes longos).
+
+| Pedido | O que mudou | Onde |
+|---|---|---|
+| Rosto mais frontal, "serpente pronta para o bote", imponente | Cabeça centralizada e maior (`HEAD_SCALE` 1,75), de frente com leve 3/4, olhando para baixo, boca entreaberta com os dentes à mostra; pescoço em **S** que desce do laço de cima, passa por baixo da cabeça e sobe por trás dela; câmera mais baixa (contra-plongée). Na aparição a cabeça sobe pelo corpo e desce pelo S, como um bote | `core/dragon.ts`, `core/path.ts`, `core/DragonScene.ts` |
+| "Está escondendo partes do corpo" | Câmera afastada (z 15,5 → 20) e centrada no corpo: o "8" inteiro cabe numa tela em pé, com a cabeça emoldurada pelo laço de cima | `core/DragonScene.ts` |
+| Rotação do corpo estranha onde aparece a barriga | O alvo do dorso (para fora da curva + para a câmera) é **suavizado ao longo da coluna** (2× média móvel ±9 anéis) e o dorso **nunca fica de costas para a câmera**: a barriga aparece de lado, nas bordas internas das voltas, sem "fita torcida" nos pontos de inflexão do S | `core/tube.ts` (`computeFrames`) |
+| Mancha/linha reta no corpo | Era borda do mapa de sombras; **sombras projetadas desligadas** (também custavam quadros no iPhone). O AO assado no modelo dá o contato | `core/atmosphere.ts` |
+| Lábio inferior transparente | Caixa de recorte da mandíbula estendida para a frente (o lábio era cortado) | `tools/dragon/build.mjs` (`JAW_BOX`) |
+| Olho redondo → como o original, vermelho | Olho amendoado inclinado, íris vermelha acesa com fenda fina, halo vermelho | `core/dragon.ts`, `core/materials.ts` |
+| Chifres mais marrons; juba mais anime | Galhada `#3a2410 → #7e5428`; juba em tufos finos (bochechas, mandíbula, sobrancelhas, nuca, crista) | `tools/dragon/build.mjs`, `head.mjs` |
+| Cenário vazio | Pilares de rocha com topo de grama, cordilheira azulada e chão (estilo dos cenários do anime), em poucas malhas | `core/landscape.ts` |
+| Ícone | Novo render da pose atual; corrigido o acabamento que escurecia a imagem inteira (`ImageChops.add(scale=2.2)` dividia tudo por 2,2) | `make icon`, `tools/viewer/finish_icon.py` |

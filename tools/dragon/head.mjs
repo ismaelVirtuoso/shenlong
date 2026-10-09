@@ -52,8 +52,9 @@ export function jaw(x, y, z) {
 
 // ── cores ──
 const C = {
-  top: hex('#1b4a21'), mid: hex('#2c7631'), side: hex('#4c983a'), belly: hex('#cbb878'), bellyShade: hex('#9a8752'),
-  lip: hex('#163a19'), palate: hex('#38090e'), tongue: hex('#5c171d'), socket: hex('#0d2410'), nose: hex('#245f27'),
+  // paleta da referência: verde-limão vivo, barriga pêssego, boca rosada
+  top: hex('#2d8a29'), mid: hex('#4cb83a'), side: hex('#80d457'), belly: hex('#f0c28c'), bellyShade: hex('#c99a62'),
+  lip: hex('#2a7424'), palate: hex('#5a0f1a'), tongue: hex('#c8445a'), socket: hex('#123a12'), nose: hex('#3a9a30'),
 };
 const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 

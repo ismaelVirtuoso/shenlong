@@ -11,6 +11,8 @@ import { Speaker } from '../speech/speaker';
 import { deleteClip, looksLikeHallucination, SttUnavailable, transcribe } from '../voice/stt';
 import { VoiceListener, type ClipInfo } from '../voice/listener';
 import { micLevel, useStore } from './store';
+import { loadHunt, newHunt, useHunt } from '../hunt/store';
+import { tracker } from '../hunt/tracker';
 import { TIMING } from './timing';
 
 
@@ -50,6 +52,7 @@ class Controller {
     this.started = true;
     loadSfx();
     void this.refreshBackend();
+    await loadHunt();
     const granted = await VoiceListener.requestPermission();
     useStore.getState().set({ micDenied: !granted });
     this.dispatch({ type: 'START' });
@@ -78,9 +81,24 @@ class Controller {
     }
   }
 
+  /** As 7 esferas foram coletadas: vai ao altar (invocação por voz liberada). */
+  huntComplete() {
+    if (this.m.phase === 'hunt') this.dispatch({ type: 'ALL_FOUND' });
+  }
+
   background() {
+    // desejo já concedido e o app saiu no meio da despedida: as esferas se espalham do mesmo jeito
+    const granted = this.m.wishes > 0 || this.m.phase === 'goodbye' || this.m.phase === 'disappearing';
     this.cancelAll();
+    if (granted) this.scatterBalls();
     this.dispatch({ type: 'BACKGROUND' });
+  }
+
+  /** Espalha as 7 esferas de novo ao redor de onde a pessoa está agora. */
+  private scatterBalls() {
+    newHunt(tracker.lastFix);
+    tracker.resetOrigin();
+    useHunt.getState().set({ scatteredAt: Date.now() });
   }
 
   /** Atalho de debug: pula direto para uma fase (tela /debug). */
@@ -138,8 +156,16 @@ class Controller {
 
     if (phase !== 'listening') this.clearIdle();
     if (phase !== 'altar' && phase !== 'listening') void this.voice?.stop();
+    if (phase !== 'hunt') tracker.stop();
 
     switch (phase) {
+      case 'hunt':
+        // Radar do Dragão: o app vira um radar; o dragão (3D) pausa
+        st.set({ caption: null, speaking: false });
+        stopAllSfx();
+        void tracker.start();
+        break;
+
       case 'altar':
         st.set({ caption: null });
         void this.refreshBackend();
@@ -210,7 +236,10 @@ class Controller {
         playSfx('roar', { volume: 0.7 });
         this.later(300, () => this.bolt(true));
         this.later(TIMING.disappear - 800, () => hap.warning());
-        this.later(TIMING.disappear, () => this.dispatch({ type: 'DISAPPEAR_DONE' }));
+        this.later(TIMING.disappear, () => {
+          this.scatterBalls(); // desejo realizado: as esferas se espalham de novo
+          this.dispatch({ type: 'DISAPPEAR_DONE' });
+        });
         break;
 
       case 'boot':
@@ -230,6 +259,7 @@ class Controller {
     const st = useStore.getState();
     if (st.micDenied && mode === 'invocation') return; // só toque longo
     const myTurn = this.turn;
+    if (__DEV__) st.set({ voiceState: 'ouvindo' });
     void this.voice?.start({
       onLevel: (l, db) => {
         micLevel.value = l;

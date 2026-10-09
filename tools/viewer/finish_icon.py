@@ -10,7 +10,7 @@ im = ImageEnhance.Contrast(im).enhance(1.12)
 im = ImageEnhance.Color(im).enhance(1.05)
 # bloom suave: soma das altas luzes desfocadas
 hi = im.point(lambda v: max(0, v - 195) * 3)
-im = ImageChops.add(im, hi.filter(ImageFilter.GaussianBlur(w / 40)), scale=2.2)
+im = ImageChops.add(im, hi.filter(ImageFilter.GaussianBlur(w / 40)).point(lambda v: v // 2))  # add() soma (scale=1); scale>1 escurecia tudo
 # vinheta radial
 mask = Image.new('L', (w, h), 0)
 d = ImageDraw.Draw(mask)

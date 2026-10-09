@@ -136,3 +136,54 @@ function write(name, x, gain = 0.9) {
   }
   write('listen', x, 0.4);
 }
+
+// Radar do Dragão: "pi" eletrônico agudo (onda quase quadrada, 1ª+3ª harmônicas), queda leve de tom e eco curto
+{
+  const n = Math.floor(0.42 * SR), x = new Float32Array(n);
+  const blip = (t0, f0, dur) => {
+    let ph = 0;
+    for (let i = Math.floor(t0 * SR); i < Math.min(n, Math.floor((t0 + dur) * SR)); i++) {
+      const u = (i / SR - t0) / dur;
+      ph += (TAU * f0 * (1 - 0.06 * u)) / SR;
+      const e = Math.min(1, u * dur / 0.004) * Math.min(1, (1 - u) * dur / 0.012);
+      x[i] += e * (Math.sin(ph) + 0.28 * Math.sin(3 * ph));
+    }
+  };
+  blip(0, 2480, 0.075);
+  // eco eletrônico (como o bipe que "ressoa" no aparelho)
+  for (let i = n - 1; i >= 0; i--) {
+    const d1 = i - Math.floor(0.11 * SR), d2 = i - Math.floor(0.22 * SR);
+    if (d1 >= 0) x[i] += 0.32 * x[d1];
+    if (d2 >= 0) x[i] += 0.12 * x[d2];
+  }
+  write('radar', x, 0.75);
+}
+// ligar o radar: clique do botão + varredura ascendente "bwiip"
+{
+  const n = Math.floor(0.36 * SR), x = new Float32Array(n);
+  const click = lowpass(noise(0.012), 3500);
+  for (let i = 0; i < click.length; i++) x[i] += click[i] * 1.4 * (1 - i / click.length);
+  let ph = 0;
+  for (let i = Math.floor(0.05 * SR); i < n; i++) {
+    const u = (i / SR - 0.05) / 0.31;
+    ph += (TAU * (700 + 2100 * u * u)) / SR;
+    x[i] += 0.55 * Math.min(1, u * 20) * (1 - u) * (Math.sin(ph) + 0.2 * Math.sin(3 * ph));
+  }
+  write('radarOn', x, 0.7);
+}
+// as 7 esferas reunidas: arpejo brilhante ascendente (uma nota por esfera) + brilho
+{
+  const n = Math.floor(3.2 * SR), x = new Float32Array(n);
+  const notes = [523.25, 659.25, 783.99, 1046.5, 1318.5, 1568.0, 2093.0];
+  notes.forEach((f, k) => {
+    const t0 = k * 0.16;
+    for (let i = Math.floor(t0 * SR); i < n; i++) {
+      const t = i / SR - t0;
+      const e = Math.min(1, t / 0.005) * Math.exp(-t * (k === 6 ? 1.1 : 2.4));
+      x[i] += e * (Math.sin(TAU * f * t) + 0.35 * Math.sin(TAU * f * 2.01 * t) + 0.12 * Math.sin(TAU * f * 3.02 * t));
+    }
+  });
+  const sh = lowpass(noise(3.2), 6000);
+  for (let i = 0; i < n; i++) { const t = i / SR; x[i] += 0.05 * sh[i] * Math.min(1, t / 0.8) * Math.exp(-Math.max(0, t - 1.2) * 1.5); }
+  write('gather', x, 0.7);
+}

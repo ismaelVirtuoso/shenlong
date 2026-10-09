@@ -17,7 +17,8 @@ export class Whisker {
   constructor(private anchor: THREE.Vector3, private side: number, length = 3.2) {
     // forma de repouso: sai para o lado, arqueia para cima e cai para trás em S
     const shape = (a: number) =>
-      new THREE.Vector3(side * (0.3 * a + 0.3 * Math.sin(Math.PI * a)), 0.15 * a - 1.5 * a * a, -0.55 * a - 0.7 * a * a + 0.15 * Math.sin(Math.PI * 2 * a));
+      // sai para o lado e sobe em curvas longas (como na referência)
+      new THREE.Vector3(side * (0.9 * a + 0.3 * Math.sin(Math.PI * a)), -0.15 * a - 0.35 * a * a + 0.3 * a * Math.sin(Math.PI * 2.2 * a), -0.3 * a - 0.3 * a * a + 0.25 * Math.sin(Math.PI * 2 * a));
     // reamostra por comprimento de arco: nós igualmente espaçados (sem conflito com as restrições)
     const dense: THREE.Vector3[] = [];
     const cum: number[] = [0];
@@ -35,7 +36,7 @@ export class Whisker {
       this.rest.push(dense[c]!.clone().lerp(dense[c + 1]!, f).multiplyScalar(k).add(anchor));
     }
     this.seg = length / (N - 1);
-    for (let j = 0; j < N; j++) this.spine.r[j] = 0.034 * Math.pow(1 - j / (N - 1), 0.8) + 0.005;
+    for (let j = 0; j < N; j++) this.spine.r[j] = 0.026 * Math.pow(1 - j / (N - 1), 0.8) + 0.004;
   }
 
   update(head: THREE.Object3D, t: number, energy: number) {
@@ -57,7 +58,7 @@ export class Whisker {
         const cur = x[i]!;
         const tv = c === 0 ? target.x : c === 1 ? target.y : target.z;
         let acc = (tv - cur) * stiff;
-        if (c === 1) acc -= 0.0012 * a;
+        if (c === 1) acc -= 0.0003 * a; // quase sem peso: os bigodes flutuam
         if (c === 0) acc += Math.sin(t * 1.3 + a * 4 + this.side) * 0.0025 * a * (1 + energy * 2);
         if (c === 2) acc += Math.cos(t * 0.9 + a * 3) * 0.0018 * a * (1 + energy * 2);
         x[i] = cur + (cur - prev[i]!) * 0.86 + acc;

@@ -329,3 +329,18 @@ Cada prompt assume o repositório atual e começa com *"Leia docs/PLANO.md e rod
 4. **BARGE-IN**: "Habilite interrupção por voz apenas com fone (detectar rota de áudio)."
 5. **REBRAND**: "Troque nome/frase/arte conforme seção 8 usando só `core/phrases.ts`, `core/lines.ts` e `server/src/persona.ts`."
 6. **LOJAS**: "Adicione gate parental, política de privacidade, metadados EAS submit."
+
+## 20. Radar do Dragão: a caçada antes da invocação
+
+**Fluxo:** `boot → hunt → (7 esferas) → altar → … → disappearing → hunt` (máquina de estados em `mobile/src/core/machine.ts`; `INVOKE` só vale no altar, então sem as 7 esferas não há invocação). A caçada fica salva no aparelho (AsyncStorage): esferas, coletadas e posição.
+
+| Decisão | Por quê |
+|---|---|
+| Área de 100 m² = raio √(100/π) ≈ 5,6 m; 7 esferas uniformes na área, ≥ 2,5 m do início e espaçadas | cabe dentro de casa; nenhuma começa já ao alcance |
+| Posição por **passos** (pico do acelerômetro, 0,62 m/passo) na direção do aparelho; GPS só ancora e corrige derivas grandes (discordância > 2× a precisão) | o GPS erra 5–15 m dentro de casa, mais que a área inteira |
+| Rumo pela **matriz de rotação** do DeviceMotion (Rz·Rx·Ry), não pelos ângulos; frente = topo do aparelho misturado com a câmera traseira; bússola do sistema só calibra o deslocamento com o aparelho mais deitado | os ângulos de Euler travam (gimbal) com o celular em pé, justo na câmera; a bússola do Android usa `getOrientation` e sofre do mesmo problema |
+| **Modo guiado** quando não há DeviceMotion (sem giroscópio/bússola): cada passo vai na direção da esfera mais próxima e para a ~1,4 m | tablets de entrada costumam não ter esses sensores |
+| RA por sensores: esfera no chão (olho a 1,1 m), x = rumo relativo / FOV, y = (elevação − inclinação) / FOV; toque coleta a ≤ 2,2 m | funciona no Expo Go; ancoragem em superfícies (ARKit/ARCore) exigiria build próprio (ex.: ViroReact) |
+| Sons sintetizados (`radar`, `radarOn`, `gather`) | o áudio original do anime é da Toei (não redistribuível); trocar o arquivo é possível para uso pessoal |
+
+Código: `mobile/src/features/hunt/` (`geo.ts` puro e testado; `tracker.ts` sensores; `Radar.tsx`, `ArFinder.tsx`, `Gathered.tsx`, `HuntScreen.tsx`).

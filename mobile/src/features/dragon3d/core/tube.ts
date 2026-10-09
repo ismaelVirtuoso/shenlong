@@ -24,8 +24,20 @@ export function createSpine(count: number): Spine {
   };
 }
 
-/** Tangentes por diferença e normais por transporte paralelo (sem torção) a partir de `up0`. */
-export function computeFrames(sp: Spine, up0: THREE.Vector3) {
+/**
+ * Tangentes por diferença e normais por transporte paralelo a partir de `up0`.
+ * `away` (opcional): direção para onde o DORSO tende a apontar (ex.: para longe da câmera), para a
+ * barriga aparecer nas laterais dos laços como no anime; o peso cresce a partir do pescoço.
+ */
+/** peso do viés do dorso para a câmera no alvo (menor = barriga mais visível no lado de dentro das curvas) */
+const AWAY_W = 0.25;
+/** o dorso nunca vira menos que isto para a câmera (cos): a barriga não fica de frente */
+const MIN = 0.05;
+/** alvos do dorso por anel (reaproveitado entre quadros) */
+let targets = new Float32Array(0);
+let tmp = new Float32Array(0);
+
+export function computeFrames(sp: Spine, up0: THREE.Vector3, away?: THREE.Vector3, bias = 0) {
   const { p, t, n, b, count } = sp;
   for (let i = 0; i < count; i++) {
     const a = Math.max(0, i - 1), c = Math.min(count - 1, i + 1);
@@ -38,7 +50,35 @@ export function computeFrames(sp: Spine, up0: THREE.Vector3) {
     }
     t[i * 3] = x / l; t[i * 3 + 1] = y / l; t[i * 3 + 2] = z / l;
   }
-  // N0 = up0 projetado no plano normal
+  const useBias = !!away && bias > 0;
+  if (useBias) {
+    if (targets.length < count * 4) { targets = new Float32Array(count * 4); tmp = new Float32Array(count * 4); }
+    // alvo do dorso: para FORA da curva (barriga para dentro, como no anime) + viés para `away` (câmera)
+    for (let i = 0; i < count; i++) {
+      const a = Math.max(0, i - 2), c = Math.min(count - 1, i + 2);
+      let kx = t[c * 3]! - t[a * 3]!, ky = t[c * 3 + 1]! - t[a * 3 + 1]!, kz = t[c * 3 + 2]! - t[a * 3 + 2]!;
+      const kl = Math.hypot(kx, ky, kz);
+      const curv = Math.min(1, kl * 6); // ~0 em trechos retos/inflexões
+      if (kl > 1e-5) { kx /= kl; ky /= kl; kz /= kl; }
+      targets[i * 4] = -kx * curv + away!.x * AWAY_W;
+      targets[i * 4 + 1] = -ky * curv + away!.y * AWAY_W;
+      targets[i * 4 + 2] = -kz * curv + away!.z * AWAY_W;
+      targets[i * 4 + 3] = curv;
+    }
+    // suaviza ao longo da coluna (2 passadas de média móvel ±R): a torção fica gradual, sem "fita torcida"
+    const R = 9;
+    for (let pass = 0; pass < 2; pass++) {
+      const src = pass === 0 ? targets : tmp, dst = pass === 0 ? tmp : targets;
+      for (let i = 0; i < count; i++) {
+        let sx = 0, sy = 0, sz = 0, sc = 0, m = 0;
+        for (let j = Math.max(0, i - R); j <= Math.min(count - 1, i + R); j++) {
+          sx += src[j * 4]!; sy += src[j * 4 + 1]!; sz += src[j * 4 + 2]!; sc += src[j * 4 + 3]!; m++;
+        }
+        dst[i * 4] = sx / m; dst[i * 4 + 1] = sy / m; dst[i * 4 + 2] = sz / m; dst[i * 4 + 3] = sc / m;
+      }
+    }
+  }
+  // N0 = up0 projetado no plano normal; depois transporte paralelo puxado pelo alvo
   let nx = up0.x, ny = up0.y, nz = up0.z;
   for (let i = 0; i < count; i++) {
     const tx = t[i * 3]!, ty = t[i * 3 + 1]!, tz = t[i * 3 + 2]!;
@@ -47,6 +87,35 @@ export function computeFrames(sp: Spine, up0: THREE.Vector3) {
     let l = Math.hypot(nx, ny, nz);
     if (l < 1e-5) { nx = -tz; ny = 0; nz = tx; l = Math.hypot(nx, nz) || 1; }
     nx /= l; ny /= l; nz /= l;
+    if (useBias) {
+      const vx = targets[i * 4]!, vy = targets[i * 4 + 1]!, vz = targets[i * 4 + 2]!, curv = targets[i * 4 + 3]!;
+      const ad = vx * tx + vy * ty + vz * tz;
+      let ax = vx - ad * tx, ay = vy - ad * ty, az = vz - ad * tz;
+      const al = Math.hypot(ax, ay, az);
+      if (al > 1e-3) {
+        ax /= al; ay /= al; az /= al;
+        // o dorso nunca fica de costas para a câmera: a barriga aparece de lado, não de frente
+        const wx = away!.x - (away!.x * tx + away!.y * ty + away!.z * tz) * tx;
+        const wy = away!.y - (away!.x * tx + away!.y * ty + away!.z * tz) * ty;
+        const wz = away!.z - (away!.x * tx + away!.y * ty + away!.z * tz) * tz;
+        const wl = Math.hypot(wx, wy, wz);
+        if (wl > 0.2) {
+          const face = (ax * wx + ay * wy + az * wz) / wl;
+          if (face < MIN) {
+            const k = Math.min(1, (MIN - face) / (1 + MIN));
+            ax += (wx / wl - ax) * k; ay += (wy / wl - ay) * k; az += (wz / wl - az) * k;
+            const l3 = Math.hypot(ax, ay, az) || 1;
+            ax /= l3; ay /= l3; az /= l3;
+          }
+        }
+        const w = bias * Math.min(1, i / 12) * (0.35 + 0.65 * curv);
+        nx += (ax - nx) * w; ny += (ay - ny) * w; nz += (az - nz) * w;
+        const d2 = nx * tx + ny * ty + nz * tz;
+        nx -= d2 * tx; ny -= d2 * ty; nz -= d2 * tz;
+        const l2 = Math.hypot(nx, ny, nz) || 1;
+        nx /= l2; ny /= l2; nz /= l2;
+      }
+    }
     n[i * 3] = nx; n[i * 3 + 1] = ny; n[i * 3 + 2] = nz;
     b[i * 3] = ty * nz - tz * ny; b[i * 3 + 1] = tz * nx - tx * nz; b[i * 3 + 2] = tx * ny - ty * nx;
   }

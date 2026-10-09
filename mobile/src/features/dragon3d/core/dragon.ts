@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { DragonAsset } from './glb';
-import { bodySpine, createBodyDepthMaterial, type DragonMaterials } from './materials';
+import { bodySpine, type DragonMaterials } from './materials';
 import { BodyPath } from './path';
 import { computeFrames, createSpine, GpuTube, type Spine } from './tube';
 import { Whisker } from './whisker';
@@ -13,22 +13,25 @@ const sstep = (a: number, b: number, x: number) => {
 };
 
 /** Pose final da cabeça (mundo) — ver DragonScene p/ câmera. */
-export const HEAD_FINAL = new THREE.Vector3(0.55, 2.75, 3.6);
+export const HEAD_FINAL = new THREE.Vector3(0.35, 2.45, 4.8);
 /** escala da cabeça esculpida em relação ao corpo */
-const HEAD_SCALE = 1.4;
+const HEAD_SCALE = 1.75;
 
-const SPIKE_STEP = 0.48;
+const SPIKE_STEP = 0.36;
+const AWAY = new THREE.Vector3(0.15, 0.35, 1).normalize(); // dorso p/ a câmera: barriga nas bordas dos laços
 const LEGS: [number, number][] = [[3.0, 1], [3.0, -1], [12.5, 1], [12.5, -1]];
 
 /** Cor do corpo em função da posição angular (0 = dorso, 0.5 = ventre). */
 function bodyColor(side01: number): [number, number, number] {
   const c = Math.cos(side01 * Math.PI * 2); // 1 dorso, -1 ventre
   const lin = (h: string) => new THREE.Color(h); // THREE.Color converte sRGB→linear
-  const top = lin('#1a4a20'), mid = lin('#2d7a31'), side = lin('#4f9c3b'), belly = lin('#c9b674');
+  // paleta da referência: verde-limão, barriga pêssego e a linha vermelha entre os dois
+  const top = lin('#2d8a29'), mid = lin('#4cb83a'), side = lin('#86d85c'), belly = lin('#f0c28c'), stripe = lin('#d8442a');
   const col = new THREE.Color();
   if (c > 0.3) col.copy(mid).lerp(top, sstep(0.3, 0.95, c));
-  else if (c > -0.45) col.copy(side).lerp(mid, sstep(-0.45, 0.3, c));
-  else col.copy(side).lerp(belly, sstep(-0.45, -0.75, c));
+  else if (c > -0.3) col.copy(side).lerp(mid, sstep(-0.3, 0.3, c));
+  else if (c > -0.42) col.copy(stripe);
+  else col.copy(belly);
   return [col.r, col.g, col.b];
 }
 
@@ -72,20 +75,14 @@ export class Dragon {
       if (!m) throw new Error(`malha ausente no GLB: ${name}`);
       return m;
     };
-    const shadow = (o: THREE.Mesh) => {
-      o.castShadow = hi;
-      o.receiveShadow = hi;
-      return o;
-    };
-
     // ── cabeça ──
-    this.head.add(shadow(new THREE.Mesh(g(hi ? 'head_hi' : 'head_lo'), mats.head)));
-    this.head.add(shadow(new THREE.Mesh(g('horns'), mats.horn)));
-    this.head.add(shadow(new THREE.Mesh(g('mane'), mats.mane)));
+    this.head.add(new THREE.Mesh(g(hi ? 'head_hi' : 'head_lo'), mats.head));
+    this.head.add(new THREE.Mesh(g('horns'), mats.horn));
+    this.head.add(new THREE.Mesh(g('mane'), mats.mane));
     this.head.add(new THREE.Mesh(g('teeth_upper'), mats.teeth));
     const pivot = asset.nodes.jaw_pivot ?? new THREE.Vector3(0, -0.12, -0.16);
     this.jaw.position.copy(pivot);
-    const jawMesh = shadow(new THREE.Mesh(g(hi ? 'jaw_hi' : 'jaw_lo'), mats.head));
+    const jawMesh = new THREE.Mesh(g(hi ? 'jaw_hi' : 'jaw_lo'), mats.head);
     const lowTeeth = new THREE.Mesh(g('teeth_lower'), mats.teeth);
     jawMesh.position.copy(pivot).negate();
     lowTeeth.position.copy(pivot).negate();
@@ -94,14 +91,19 @@ export class Dragon {
 
     this.matEye = mats.eye;
     const glowTex = makeGlowTexture();
-    const eyeGeo = new THREE.SphereGeometry(0.105, 28, 20);
+    // olho amendoado e inclinado (canto externo para cima), como no anime
+    const eyeGeo = new THREE.SphereGeometry(0.1, 32, 16);
     for (const n of ['eye_R', 'eye_L']) {
       const p = asset.nodes[n]!;
       const e = new THREE.Mesh(eyeGeo, mats.eye);
-      e.position.copy(p);
+      const sgn = Math.sign(p.x);
+      e.position.copy(p).add(new THREE.Vector3(0, 0.005, -0.012));
+      e.rotation.set(0, sgn * 0.28, sgn * 0.36);
+      e.userData.base = new THREE.Vector3(1.45, 0.78, 0.85);
+      e.scale.copy(e.userData.base);
       this.head.add(e);
       this.eyes.push(e);
-      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: '#ff3a14', blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: '#ff1408', blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
       s.position.copy(p).add(new THREE.Vector3(0, 0, 0.08));
       this.head.add(s);
       this.eyeGlows.push(s);
@@ -114,8 +116,9 @@ export class Dragon {
     const neck = asset.nodes.neck ?? new THREE.Vector3(0, -0.12, -1.3);
     this.neckOffset = neck.clone().negate();
     const dirToCam = camera.clone().sub(HEAD_FINAL).normalize();
-    dirToCam.applyAxisAngle(new THREE.Vector3(0, 1, 0), -0.32); // 3/4: mostra o comprimento do focinho
-    dirToCam.y -= 0.18;
+    // de frente, como a serpente armando o bote (só um leve 3/4 para o focinho não achatar)
+    dirToCam.applyAxisAngle(new THREE.Vector3(0, 1, 0), -0.3);
+    dirToCam.y -= 0.4; // olha para baixo, para quem o invocou
     dirToCam.normalize();
     this.lookQuat(dirToCam, this.qFinal);
     const neckFinal = HEAD_FINAL.clone().add(neck.clone().multiplyScalar(HEAD_SCALE).applyQuaternion(this.qFinal));
@@ -129,15 +132,14 @@ export class Dragon {
     this.spine = createSpine(this.rings);
     this.body = new GpuTube(this.rings, sides, { vRepeat: 3, flatBelly: 0.55, uScale: 1.15, colors: bodyColor });
     bodySpine.uSpine.value = this.body.uniforms.uSpine.value;
-    this.bodyMesh = shadow(new THREE.Mesh(this.body.geometry, mats.body));
-    this.bodyMesh.customDepthMaterial = createBodyDepthMaterial();
+    this.bodyMesh = new THREE.Mesh(this.body.geometry, mats.body);
     this.bodyMesh.frustumCulled = false;
 
     // espinhos dorsais (lâminas finas, inclinadas para trás)
     const spikeGeo = new THREE.ConeGeometry(0.5, 1, 6, 4, false);
     spikeGeo.translate(0, 0.5, 0);
     const sc = new Float32Array(spikeGeo.attributes.position!.count * 3);
-    const base = new THREE.Color('#123a18'), tip = new THREE.Color('#4a8a36');
+    const base = new THREE.Color('#1b5e1c'), tip = new THREE.Color('#3f9a2f');
     for (let i = 0; i < spikeGeo.attributes.position!.count; i++) {
       const c = base.clone().lerp(tip, spikeGeo.attributes.position!.getY(i));
       sc.set([c.r, c.g, c.b], i * 3);
@@ -147,21 +149,19 @@ export class Dragon {
     mats.spike.color.set('#ffffff');
     const spikeCount = Math.floor((this.bodyLength - 3) / SPIKE_STEP);
     this.spikes = new THREE.InstancedMesh(spikeGeo, mats.spike, spikeCount);
-    this.spikes.castShadow = hi;
     this.spikes.frustumCulled = false;
 
     for (const [, side] of LEGS) {
-      const leg = shadow(new THREE.Mesh(g('leg'), mats.head));
+      const leg = new THREE.Mesh(g('leg'), mats.head);
       leg.scale.set(side, 1, 1);
       this.legs.push(leg);
     }
 
     for (const n of ['whisker_R', 'whisker_L'] as const) {
       const a = asset.nodes[n]!;
-      const w = new Whisker(a, Math.sign(a.x), 3.4);
+      const w = new Whisker(a, Math.sign(a.x), 4.4);
       const m = new THREE.Mesh(w.tube.geometry, mats.whisker);
       m.frustumCulled = false;
-      m.castShadow = hi;
       this.whiskers.push(w);
       this.root.add(m);
     }
@@ -211,7 +211,8 @@ export class Dragon {
     this.head.updateMatrixWorld(true);
 
     // mandíbula: envelope de fala (sílabas ~5 Hz) + rugido no desejo
-    const jawOpen = 0.03 + inp.speak * (0.12 + 0.42 * env) + 0.25 * inp.wish + 0.1 * inp.poke;
+    // boca entreaberta em repouso (dentes à mostra, como a serpente que sibila antes do bote)
+    const jawOpen = 0.1 + inp.speak * (0.12 + 0.42 * env) + 0.25 * inp.wish + 0.1 * inp.poke;
     this.jaw.rotation.x = jawOpen * 0.55;
 
     // olhos: seguem a câmera, piscam, brilham ao falar/ouvir/desejo
@@ -221,11 +222,11 @@ export class Dragon {
     this.matEye.uniforms.uGlow!.value = glow;
     this.matEye.uniforms.uPupil!.value = 1 - 0.4 * inp.wish + 0.3 * inp.think;
     for (const e of this.eyes) {
-      e.lookAt(camera.position);
-      e.scale.set(1, blink * (1 - 0.35 * inp.think), 1);
+      const b0 = e.userData.base as THREE.Vector3;
+      e.scale.set(b0.x, b0.y * blink * (1 - 0.3 * inp.think), b0.z);
     }
     for (const s of this.eyeGlows) {
-      s.scale.setScalar(0.35 + 0.35 * glow);
+      s.scale.setScalar(0.28 + 0.24 * glow);
       (s.material as THREE.SpriteMaterial).opacity = Math.min(1, 0.25 + 0.5 * glow) * blink;
     }
     this.orb.scale.setScalar(0.6 + 0.25 * Math.sin(t * 6));
@@ -257,7 +258,8 @@ export class Dragon {
       sp.r[i] = Math.max(0.0005, r);
     }
     const P2 = performance.now();
-    computeFrames(sp, this.v2.set(0, 1, 0).applyQuaternion(this.head.quaternion));
+    // dorso tende a ficar voltado para quem olha; a barriga (e a linha vermelha) aparece nas bordas
+    computeFrames(sp, this.v2.set(0, 1, 0).applyQuaternion(this.head.quaternion), AWAY, 0.6);
     const P3 = performance.now();
     this.body.update(sp);
     const P4 = performance.now();
@@ -274,7 +276,7 @@ export class Dragon {
       const sway = 0.08 * Math.sin(t * 2 + j * 0.7);
       Y.copy(N).multiplyScalar(Math.cos(0.75 + sway)).addScaledVector(T, Math.sin(0.75 + sway)).normalize();
       Z.crossVectors(B, Y).normalize();
-      const h = r * (0.75 + 0.25 * Math.sin(j * 1.7)) * (1 - 0.4 * sstep(0.7, 1, s / BL));
+      const h = r * (0.5 + 0.15 * Math.sin(j * 1.7)) * (1 - 0.4 * sstep(0.7, 1, s / BL));
       this.m4.makeBasis(B.multiplyScalar(r * 0.12), Y.multiplyScalar(h), Z.multiplyScalar(r * 0.7));
       this.m4.setPosition(this.v1.fromArray(sp.p, i * 3).addScaledVector(N, r * 0.78));
       this.spikes.setMatrixAt(count++, this.m4);

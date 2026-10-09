@@ -2,34 +2,15 @@ import { useMemo } from 'react';
 import { Circle, Group, LinearGradient, Oval, Path, RadialGradient, Skia, vec } from '@shopify/react-native-skia';
 import { useDerivedValue } from 'react-native-reanimated';
 import { clamp, lerp, smooth } from './math';
+import { starCenters, starOutline } from './stars';
 import type { Layout, SceneValues } from './types';
 
 const TAU = Math.PI * 2;
 
-/** Posição das estrelas (unidades do raio da esfera) para N = 1..7 */
-function starCenters(n: number): { x: number; y: number }[] {
-  if (n === 1) return [{ x: 0, y: 0 }];
-  const out: { x: number; y: number }[] = [];
-  if (n === 7) out.push({ x: 0, y: 0 });
-  const ring = n === 7 ? 6 : n;
-  const rad = n === 2 ? 0.42 : n === 7 ? 0.52 : 0.46;
-  const start = n === 3 ? -Math.PI / 2 : n === 5 ? -Math.PI / 2 : n === 4 ? Math.PI / 4 : 0;
-  for (let k = 0; k < ring; k++) out.push({ x: Math.cos(start + (k * TAU) / ring) * rad, y: Math.sin(start + (k * TAU) / ring) * rad });
-  return out;
-}
-
 function starsPath(n: number) {
   const p = Skia.PathBuilder.Make();
-  const r = n === 1 ? 0.5 : n <= 3 ? 0.3 : n <= 5 ? 0.25 : 0.2;
   for (const c of starCenters(n)) {
-    for (let k = 0; k < 10; k++) {
-      const a = -Math.PI / 2 + (k * Math.PI) / 5;
-      const rr = k % 2 === 0 ? r : r * 0.42;
-      const x = c.x + Math.cos(a) * rr;
-      const y = c.y + Math.sin(a) * rr;
-      if (k === 0) p.moveTo(x, y);
-      else p.lineTo(x, y);
-    }
+    starOutline(c.x, c.y).forEach(([x, y], k) => (k ? p.lineTo(x, y) : p.moveTo(x, y)));
     p.close();
   }
   return p.build();

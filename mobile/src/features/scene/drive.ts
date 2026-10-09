@@ -42,6 +42,7 @@ export function useSceneValues(): SceneValues {
     switch (phase) {
       case 'boot':
         break;
+      case 'hunt':
       case 'altar':
         intro.value = 1;
         cancelAnimation(summon);

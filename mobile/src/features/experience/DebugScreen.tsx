@@ -4,12 +4,16 @@ import { useLocalSearchParams } from 'expo-router';
 import { controller } from './controller';
 import { Overlay } from './Overlay';
 import { Scene } from '@/features/scene/Scene';
+import { HuntScreen } from '@/features/hunt/HuntScreen';
+import { useStore as usePhaseStore } from '@/features/experience/store';
 import { DragonView } from '@/features/dragon3d/DragonView';
 import { useStore } from './store';
 import type { Phase } from '@/core/machine';
 import { downgrade } from '@/core/quality';
+import { collect, newHunt, useHunt } from '@/features/hunt/store';
+import { nearestUncollected } from '@/features/hunt/geo';
 
-const PHASES: Phase[] = ['boot', 'altar', 'summoning', 'appearing', 'greeting', 'listening', 'thinking', 'speaking', 'goodbye', 'disappearing'];
+const PHASES: Phase[] = ['boot', 'hunt', 'altar', 'summoning', 'appearing', 'greeting', 'listening', 'thinking', 'speaking', 'goodbye', 'disappearing'];
 
 /** Tela de desenvolvimento: pula para qualquer fase da experiência (abra /debug). */
 export default function Debug() {
@@ -27,13 +31,15 @@ export default function Debug() {
   return (
     <View style={{ flex: 1, backgroundColor: '#000' }}>
       <DragonView />
-      <Scene />
-      <Overlay />
+      <HuntLayer />
       <View style={{ position: 'absolute', top: 36, left: 0, right: 0 }}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           {PHASES.map((p) => (
             <Btn key={p} label={p} onPress={() => controller.debugGoto(p)} />
           ))}
+          <Btn label="+1 esfera" onPress={() => { const n = nearestUncollected(useHunt.getState().balls, 0, 0); if (n) collect(n.ball.stars); }} />
+          <Btn label="7 esferas" onPress={() => useHunt.getState().balls.forEach((b) => collect(b.stars))} />
+          <Btn label="espalhar" onPress={() => newHunt(null)} />
           <Btn label="bolt" onPress={() => st.bump('bolt', { boltBig: true })} />
           <Btn label="wish" onPress={() => st.bump('wish')} />
           <Btn label="speak" onPress={() => st.set({ speaking: !useStore.getState().speaking })} />
@@ -49,3 +55,15 @@ const Btn = ({ label, onPress }: { label: string; onPress: () => void }) => (
     <Text style={{ color: '#fff', fontSize: 11 }}>{label}</Text>
   </Pressable>
 );
+
+/** Na caçada o app vira o Radar do Dragão (tela própria); fora dela, cena 2D + interface. */
+function HuntLayer() {
+  const phase = usePhaseStore((s) => s.m.phase);
+  if (phase === 'hunt') return <HuntScreen onComplete={() => controller.huntComplete()} />;
+  return (
+    <>
+      <Scene />
+      <Overlay />
+    </>
+  );
+}

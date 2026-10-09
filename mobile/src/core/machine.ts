@@ -4,6 +4,7 @@
  */
 export type Phase =
   | 'boot' // "toque para continuar" (gesto do usuário libera áudio/mic)
+  | 'hunt' // Radar do Dragão: encontrar as 7 esferas (GPS + câmera)
   | 'altar' // esferas visíveis, escutando a invocação
   | 'summoning'
   | 'appearing'
@@ -16,6 +17,7 @@ export type Phase =
 
 export type Event =
   | { type: 'START' } // tap no boot
+  | { type: 'ALL_FOUND' } // as 7 esferas foram coletadas
   | { type: 'INVOKE' } // voz reconhecida / toque longo
   | { type: 'SUMMON_DONE' }
   | { type: 'APPEAR_DONE' }
@@ -48,11 +50,14 @@ const to = (s: MachineState, phase: Phase, patch: Partial<MachineState> = {}): M
 
 export function transition(s: MachineState, e: Event): MachineState {
   if (e.type === 'BACKGROUND') {
-    return s.phase === 'boot' ? s : { ...initialState, phase: 'altar' };
+    // volta para a caçada (o controller pula direto ao altar se as 7 já estiverem coletadas)
+    return s.phase === 'boot' || s.phase === 'hunt' ? s : { ...initialState, phase: 'hunt' };
   }
   switch (s.phase) {
     case 'boot':
-      return e.type === 'START' ? to(s, 'altar') : s;
+      return e.type === 'START' ? to(s, 'hunt') : s;
+    case 'hunt':
+      return e.type === 'ALL_FOUND' ? to(s, 'altar') : s;
     case 'altar':
       return e.type === 'INVOKE' ? to(s, 'summoning', { wishes: 0, idlePrompts: 0 }) : s;
     case 'summoning':
@@ -82,7 +87,8 @@ export function transition(s: MachineState, e: Event): MachineState {
     case 'goodbye':
       return e.type === 'GOODBYE_DONE' ? to(s, 'disappearing') : s;
     case 'disappearing':
-      return e.type === 'DISAPPEAR_DONE' ? to(s, 'altar', { wishes: 0, idlePrompts: 0 }) : s;
+      // desejo realizado: as esferas se espalham de novo → nova caçada
+      return e.type === 'DISAPPEAR_DONE' ? to(s, 'hunt', { wishes: 0, idlePrompts: 0 }) : s;
   }
 }
 

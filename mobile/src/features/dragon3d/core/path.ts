@@ -5,17 +5,23 @@ import * as THREE from 'three';
  * Ao surgir, a cabeça percorre esse caminho e o corpo a segue (como uma serpente de verdade).
  * Os pontos ondulam levemente com o tempo (respiração/serpenteio).
  */
+/**
+ * Pose final em "8"/S vertical (como na referência): laço de baixo saindo das nuvens, sobe pela
+ * esquerda por trás, laço de cima atrás dos chifres e desce pela direita até o pescoço; a cabeça
+ * fica no meio da tela, olhando para baixo.
+ */
 const BASE: [number, number, number][] = [
-  [0.0, -11.0, -2.0], // raiz: sob o pilar de luz
-  [0.0, -6.5, -2.5],
-  [0.2, -2.5, -4.0], // sobe pelo centro
-  [1.7, 1.5, -6.5],
-  [0.0, 4.4, -9.2], // passa alto, ao fundo
-  [-2.5, 3.0, -7.0],
-  [-2.6, 0.4, -3.6],
-  [-1.0, -1.2, -0.7], // volta baixa à frente
-  [1.25, -0.8, 0.6],
-  [1.35, 0.9, 1.9],
+  [0.0, -11.0, -3.0], // raiz: sob o pilar de luz
+  [0.4, -6.8, -3.0],
+  [2.3, -4.3, -2.0], // laço de baixo
+  [1.4, -2.5, 0.6],
+  [-1.3, -2.9, 0.3],
+  [-2.5, -1.1, -1.8],
+  [-2.2, 1.5, -3.6], // sobe pela esquerda, por trás
+  [-2.3, 4.0, -3.1],
+  [-0.5, 5.9, -2.8], // laço de cima (atrás dos chifres)
+  [1.9, 5.3, -2.3],
+  [2.5, 3.6, -1.0],
 ];
 
 const SAMPLES = 260;
@@ -30,10 +36,14 @@ export class BodyPath {
   length = 0;
 
   constructor(neckFinal: THREE.Vector3, neckBack: THREE.Vector3) {
-    // últimos pontos: atrás do pescoço, alinhados ao eixo da cabeça (pescoço sem quebra)
+    // pescoço em S, como a serpente armando o bote: desce do laço de cima pela direita, passa por
+    // baixo da cabeça e sobe por trás dela; os 2 últimos pontos seguem o eixo da cabeça (sem quebra)
     const c = BASE.map((p) => new THREE.Vector3(...p));
-    c.push(neckFinal.clone().addScaledVector(neckBack, 2.4).add(new THREE.Vector3(0.4, -0.9, 0)));
-    c.push(neckFinal.clone().addScaledVector(neckBack, 0.9));
+    const rel = (x: number, y: number, z: number) => neckFinal.clone().add(new THREE.Vector3(x, y, z));
+    c.push(rel(1.5, -1.9, -2.4));
+    c.push(rel(-0.5, -2.5, -1.2));
+    c.push(rel(-0.45, -1.2, -0.9));
+    c.push(neckFinal.clone().addScaledVector(neckBack, 0.7));
     c.push(neckFinal.clone());
     this.ctrl = c;
     this.cur = c.map((v) => v.clone());

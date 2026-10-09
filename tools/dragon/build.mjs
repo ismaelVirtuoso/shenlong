@@ -15,7 +15,8 @@ const t0 = Date.now();
 const log = (m) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s] ${m}`);
 
 const HEAD_BOX = [-0.8, -0.65, -1.8, 0.8, 0.85, 1.75];
-const JAW_BOX = [-0.45, -0.5, -0.7, 0.45, 0.02, 1.4];
+// (z até 1,65: a ponta do lábio inferior passava de 1,4 e a malha saía aberta na frente)
+const JAW_BOX = [-0.45, -0.52, -0.7, 0.45, 0.02, 1.65];
 
 function sculpt(name, f, box, h, colorFn) {
   const m = surfaceNets(f, box, h);
@@ -61,7 +62,7 @@ log('dentes');
 // ── chifres em galhada (marfim, com anéis na base) ──
 {
   const b = new MeshBuilder('horns');
-  const dark = hex('#5a4529'), light = hex('#c9b27c');
+  const dark = hex('#3a2410'), light = hex('#7e5428'); // galhada marrom (referência)
   const col = (t) => lerp3(dark, light, Math.min(1, t * 1.6));
   for (const s of [1, -1]) {
     const base = anchor(headUpper, [s * 0.24, 0.6, -0.22], 0.05);
@@ -83,45 +84,51 @@ log('dentes');
   log('chifres');
 }
 
-// ── juba: espinhos verde-escuros (com peso de balanço p/ animar no shader) ──
+// ── juba: tufos de fios finos e esvoaçantes (como no anime), com peso de balanço p/ animar no shader ──
 {
   const b = new MeshBuilder('mane');
-  const baseC = hex('#163f1a'), tipC = hex('#5f9a3a');
-  const col = (t, k) => { const c = lerp3(baseC, tipC, t * t); const s = 0.8 + 0.3 * Math.abs(Math.sin(k * Math.PI)); return c.map((x) => x * s); };
-  // [ponto aproximado, direção, comprimento, raio, queda]
-  const side = [
-    [[0.47, 0.46, -0.03], [0.55, 0.35, -1], 0.72, 0.07, 0.05], // sobrancelhas espinhosas
-    [[0.42, 0.52, -0.13], [0.42, 0.6, -1], 0.82, 0.072, 0.04],
-    [[0.35, 0.56, -0.22], [0.28, 0.72, -1], 0.76, 0.068, 0.02],
-    [[0.57, 0.04, -0.2], [1, -0.05, -1], 0.78, 0.085, 0.12], // franja das bochechas
-    [[0.54, -0.12, -0.3], [0.9, -0.5, -1], 0.72, 0.08, 0.1],
-    [[0.5, 0.18, -0.36], [0.85, 0.3, -1], 0.84, 0.085, 0.08],
-    [[0.44, -0.24, -0.48], [0.6, -0.8, -1], 0.6, 0.075, 0.06],
-    [[0.4, 0.36, -0.56], [0.6, 0.45, -1], 0.82, 0.085, 0.08], // lateral do crânio
-    [[0.4, 0.12, -0.78], [0.75, 0.05, -1], 0.88, 0.09, 0.12],
-    [[0.33, 0.4, -0.92], [0.5, 0.55, -1], 0.8, 0.085, 0.08],
-    [[0.38, -0.12, -1.0], [0.7, -0.35, -1], 0.75, 0.085, 0.1],
+  const root = hex('#4aa832'), tip = hex('#b6ea6a');
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const norm = (v) => { const l = Math.hypot(...v); return v.map((x) => x / l); };
+  // [âncora aproximada (lado direito), direção principal, nº de fios, comprimento mín–máx, abertura]
+  const tufts = [
+    [[0.56, 0.02, -0.14], [1, -0.15, -0.9], 14, [0.62, 1.0], 0.55], // bochechas
+    [[0.5, -0.18, -0.32], [0.75, -0.75, -0.8], 9, [0.5, 0.82], 0.45], // canto da mandíbula
+    [[0.46, 0.46, -0.06], [0.45, 0.65, -1], 9, [0.5, 0.85], 0.4], // sobrancelhas
+    [[0.38, 0.36, -0.6], [0.5, 0.55, -1], 9, [0.6, 0.95], 0.45], // lateral do crânio
+    [[0.37, 0.02, -0.95], [0.75, 0.05, -1], 9, [0.65, 1.0], 0.5], // nuca
   ];
-  const mid = [
-    [[0, 0.64, -0.42], [0, 1, -0.85], 0.55, 0.07, 0.0],
-    [[0, 0.58, -0.72], [0, 1, -1], 0.62, 0.075, 0.02],
-    [[0, 0.5, -1.02], [0, 1, -1.1], 0.62, 0.075, 0.03],
-    [[0, 0.44, -1.3], [0, 1, -1.2], 0.55, 0.07, 0.03],
-  ];
-  const spike = ([p, dir, len, r, droop]) => {
-    const base = anchor(headUpper, p, 0.04);
-    const l = Math.hypot(...dir);
-    const d = dir.map((v) => v / l);
-    const at = (k, dy) => [base[0] + d[0] * len * k, base[1] + d[1] * len * k - dy, base[2] + d[2] * len * k];
-    b.tube([base, at(0.35, 0), at(0.7, droop * 0.5), at(1, droop)], {
-      rings: 12, sides: 8, flat: 0.55, color: col, radius: (t) => r * (1 - t) ** 0.9 + 0.003,
+  const strand = (base, dir, len, w0) => {
+    const d = norm(dir);
+    const side = norm([d[2], 0.4, -d[0]]);
+    const wav = (rnd() - 0.5) * 0.25;
+    const at = (k, curl) => [
+      base[0] + d[0] * len * k + side[0] * curl, base[1] + d[1] * len * k + side[1] * curl - 0.08 * len * k * k, base[2] + d[2] * len * k + side[2] * curl,
+    ];
+    b.tube([base, at(0.33, wav * len), at(0.66, -wav * len * 0.6), at(1, wav * len * 0.8)], {
+      rings: 9, sides: 6, flat: 0.6,
+      color: (t) => lerp3(root, tip, Math.pow(t, 0.8)).map((x) => x * (0.92 + 0.12 * rnd())),
+      radius: (t) => w0 * (1 - t) ** 1.1 + 0.003,
     });
   };
-  for (const s of side) {
-    spike(s);
-    spike([[-s[0][0], s[0][1], s[0][2]], [-s[1][0], s[1][1], s[1][2]], s[2], s[3], s[4]]);
+  for (const [p, dir, count, [l0, l1], spread] of tufts) {
+    for (const sgn of [1, -1]) {
+      const base0 = anchor(headUpper, [sgn * p[0], p[1], p[2]], 0.035);
+      for (let i = 0; i < count; i++) {
+        const j = () => (rnd() - 0.5) * spread;
+        const dd = [sgn * dir[0] + j(), dir[1] + j(), dir[2] + j() * 0.5];
+        const off = [j() * 0.18, j() * 0.18, j() * 0.18];
+        strand([base0[0] + off[0], base0[1] + off[1], base0[2] + off[2]], dd, l0 + (l1 - l0) * rnd(), 0.042 + 0.024 * rnd());
+      }
+    }
   }
-  mid.forEach(spike);
+  // crista central (fios para cima e para trás)
+  for (let i = 0; i < 12; i++) {
+    const z = -0.4 - i * 0.08;
+    const base = anchor(headUpper, [(rnd() - 0.5) * 0.12, 0.7, z], 0.03);
+    strand(base, [(rnd() - 0.5) * 0.5, 1, -1.1], 0.5 + 0.35 * rnd(), 0.038);
+  }
   meshes.push(b.build());
   log('juba');
 }
@@ -138,12 +145,12 @@ log('dentes');
   };
   const legColor = (p, n) => {
     const v = fbm(p[0] * 12, p[1] * 12, p[2] * 12);
-    const c = lerp3(lerp3(hex('#4c983a'), hex('#1e5223'), Math.max(0, n[2] * -0.5 + 0.5)), hex('#cdbb7a'), Math.max(0, n[2]) * 0.6);
+    const c = lerp3(lerp3(hex('#80d457'), hex('#2d8a29'), Math.max(0, n[2] * -0.5 + 0.5)), hex('#f0c28c'), Math.max(0, n[2]) * 0.5);
     return c.map((x) => x * (0.85 + 0.3 * v));
   };
   const m = sculpt('leg_sdf', leg, [-0.3, -1.05, -0.3, 0.3, 0.2, 0.45], 0.021, legColor);
   const claws = new MeshBuilder('claws');
-  const cc = (t) => lerp3(hex('#e9dcb0'), hex('#4a3b26'), t ** 1.5);
+  const cc = (t) => lerp3(hex('#f6f2e6'), hex('#b9ab84'), t ** 1.5); // garras brancas
   for (const fx of [-0.085, -0.03, 0.03, 0.085]) {
     const bx = fx * 1.6;
     claws.tube([[bx, -0.9, 0.29], [bx, -0.9, 0.38], [bx, -0.95, 0.45], [bx, -1.02, 0.47]], { rings: 10, sides: 8, color: cc, radius: (t) => 0.03 * (1 - t) + 0.002 });

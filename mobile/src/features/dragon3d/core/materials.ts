@@ -44,18 +44,6 @@ export const bodySpine: SpineUniforms = {
   uVRepeat: { value: 3 },
 };
 
-/** Material de profundidade (sombras) que aplica a mesma deformação da espinha. */
-export function createBodyDepthMaterial() {
-  const m = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
-  m.onBeforeCompile = (s) => {
-    Object.assign(s.uniforms, bodySpine);
-    s.vertexShader = s.vertexShader
-      .replace('#include <common>', `#include <common>\n${SPINE_GLSL}`)
-      .replace('#include <begin_vertex>', 'vec3 tubeN;\nspineVertex(tubeN);\nvec3 transformed = gTubePos;');
-  };
-  return m;
-}
-
 export interface DragonMaterials {
   body: THREE.MeshStandardMaterial;
   head: THREE.MeshStandardMaterial;
@@ -115,7 +103,7 @@ export function createMaterials(): DragonMaterials {
         vec3 bl = pow(abs(n0), vec3(4.0)); bl /= (bl.x + bl.y + bl.z);
         vec3 P = vObjPos * uTri;
         vec4 det = texture2D(uDet, P.zy) * bl.x + texture2D(uDet, P.xz) * bl.y + texture2D(uDet, P.xy) * bl.z;
-        det = mix(det, vec4(0.89, 0.2, 0.5, 0.5), vMask); // boca: lisa e úmida
+        det = mix(det, vec4(0.85, 0.5, 0.5, 0.5), vMask); // boca: lisa, sem brilho exagerado
         diffuseColor.rgb *= det.r * 1.12 * mix(vec3(0.92 + 0.16 * det.b, 1.0, 0.9 + 0.16 * det.b), vec3(1.0), vMask);`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>\nroughnessFactor = clamp(det.g * 1.05, 0.18, 0.92);`)
       .replace('#include <normal_fragment_maps>', `
@@ -160,7 +148,7 @@ export function createMaterials(): DragonMaterials {
     return m;
   };
 
-  const whisker = new THREE.MeshStandardMaterial({ color: '#7d6a2c', roughness: 0.38, metalness: 0.2 });
+  const whisker = new THREE.MeshStandardMaterial({ color: '#8fd34e', roughness: 0.45, metalness: 0.05 });
   const spike = new THREE.MeshStandardMaterial({ color: '#1f4d22', roughness: 0.6, metalness: 0 });
 
   return {
@@ -189,20 +177,18 @@ function createEyeMaterial() {
       uniform float uGlow; uniform float uPupil;
       varying vec3 vLocal; varying vec3 vN; varying vec3 vView;
       void main() {
+        // olho vermelho luminoso (como no anime): centro quente, borda vermelho-escura
         vec3 d = normalize(vLocal);
-        float ang = acos(clamp(d.z, -1.0, 1.0));
-        vec3 col = mix(vec3(1.0, 0.85, 0.35), vec3(0.95, 0.12, 0.04), smoothstep(0.05, 0.55, ang));
-        col = mix(col, vec3(0.25, 0.0, 0.0), smoothstep(0.75, 1.1, ang));
-        // estrias da íris
-        col *= 0.85 + 0.15 * sin(atan(d.y, d.x) * 28.0);
-        // pupila em fenda vertical
-        float slit = abs(d.x) - 0.07 * uPupil * (1.0 - d.y * d.y * 1.4);
-        col = mix(vec3(0.02, 0.0, 0.0), col, smoothstep(-0.01, 0.015, slit) + step(0.95, ang));
+        float r = length(d.xy);
+        vec3 col = mix(vec3(1.0, 0.18, 0.1), vec3(0.85, 0.02, 0.02), smoothstep(0.0, 0.6, r));
+        col = mix(col, vec3(0.35, 0.0, 0.0), smoothstep(0.75, 1.0, r));
+        // pupila: traço escuro fino e discreto
+        float slit = abs(d.x) - 0.045 * uPupil;
+        col = mix(col * 0.35, col, smoothstep(-0.01, 0.02, slit) + step(0.6, abs(d.y)));
         vec3 N = normalize(vN), V = normalize(vView);
         vec3 L = normalize(vec3(-0.4, 0.7, 0.6));
-        float spec = pow(max(dot(reflect(-L, N), V), 0.0), 80.0);
-        float fres = pow(1.0 - max(dot(N, V), 0.0), 3.0);
-        vec3 outc = col * (0.55 + 1.6 * uGlow) + vec3(1.0) * spec * 1.4 + vec3(1.0, 0.4, 0.2) * fres * 0.4;
+        float spec = pow(max(dot(reflect(-L, N), V), 0.0), 60.0);
+        vec3 outc = col * (0.55 + 0.9 * uGlow) + vec3(1.0, 0.9, 0.8) * spec * 1.2;
         gl_FragColor = vec4(outc, 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
