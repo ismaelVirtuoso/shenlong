@@ -2,8 +2,6 @@ const { getDefaultConfig } = require('expo/metro-config');
 
 const config = getDefaultConfig(__dirname);
 
-// modelo 3D do Shenlong (tools/dragon/build.mjs)
-config.resolver.assetExts.push('glb');
 
 // canvaskit-wasm (Skia on web) references node built-ins that don't exist in the browser.
 const upstream = config.resolver.resolveRequest;

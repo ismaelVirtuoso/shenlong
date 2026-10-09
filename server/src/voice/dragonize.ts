@@ -20,8 +20,8 @@ function filter(engine: string) {
   const t2 = TEMPO / FORMANT;
   return [
     `[0:a]aresample=48000,asetrate=${Math.round(48000 * FORMANT)},aresample=48000,` +
-      `rubberband=pitch=${p2.toFixed(4)}:tempo=${t2.toFixed(4)}:formant=preserved:transients=smooth,asplit=2[m][s]`,
-    `[s]rubberband=pitch=0.5:formant=preserved,lowpass=f=2200,volume=0.5[sub]`,
+      `rubberband=pitch=${p2.toFixed(4)}:tempo=${t2.toFixed(4)}:formant=preserved,asplit=2[m][s]`,
+    `[s]asetrate=24000,aresample=48000,atempo=2.0,lowpass=f=2200,volume=0.5[sub]`, // oitava abaixo (barato)
     `[m][sub]amix=inputs=2:weights=1 0.75:normalize=0,` +
       `highpass=f=65,bass=g=4:f=130,equalizer=f=2600:t=q:w=1.3:g=4,` +
       `aecho=0.8:0.86:60|130|260|430:0.3|0.22|0.14|0.08,` +

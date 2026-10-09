@@ -306,7 +306,7 @@ Baixo custo: TTS Google Chirp/Piper self-host (÷5–10), mais frases pré-gerad
 |---|---|---|---|
 | Framework | Expo 57 / RN 0.86 / TS strict | Já usado nos outros apps, roda no Expo Go, EAS | Flutter, RN CLI |
 | Animação | Reanimated 4 (worklets) | 60 fps no UI thread, integra com Skia | Animated API, moti |
-| Renderização | **three.js 0.180 sobre expo-gl** (dragão, céu, nuvens, luz) + Skia 2.6 (efeitos 2D por cima) | Personagem 3D real com PBR/sombras no Expo Go; asset GLB próprio gerado por escultura SDF (ver `docs/REFORMULACAO-3D.md`) | Skia procedural 2D (v1: amador), Lottie (sem artista), Rive (fora do Go), vídeo (não reativo), R3F (camada extra sem ganho) |
+| Renderização | **Skia 2.6, estilo anime**: arte vetorial rasterizada + corpo em `drawVertices` | Fiel ao desenho do Dragon Ball, leve e fluido no Expo Go (ver `docs/VISUAL.md`) | 3D three.js/expo-gl (pesado, longe do traço do anime), Lottie (sem artista), Rive (fora do Go), vídeo (não reativo) |
 | Áudio | expo-audio + expo-speech | Já no Go, metering p/ VAD | expo-av (deprecado), react-native-audio-api (dev client) |
 | STT | Backend + gpt-4o-mini-transcribe, VAD local | Único caminho no Go; barato; bom pt-BR | expo-speech-recognition (dev client), Whisper local, wake-word |
 | TTS | gpt-4o-mini-tts + fixas + expo-speech | Voz instruível (grave/majestosa), barato | ElevenLabs (caro, trocável), Piper (qualidade) |

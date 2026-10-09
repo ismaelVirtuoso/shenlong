@@ -1,4 +1,4 @@
-.PHONY: dragon-build dragon-viewer dragon-shot icon voice-setup check-keys
+.PHONY: art-preview icon voice-setup check-keys
 .PHONY: help install install-server install-mobile setup-env up up-mock server server-mock mobile mobile-clear mobile-tunnel \
         gen-voice gen-sfx test typecheck lan-ip fix-inotify-watchers mobile-eas-auth-check \
         mobile-build-ios mobile-build-android mobile-build-all
@@ -29,10 +29,8 @@ help: ## Mostra esta ajuda
 	@echo "$(YELLOW)  make fix-inotify-watchers$(NC) Linux: corrige ENOSPC do Metro"
 	@echo ""
 	@echo "$(BLUE)🛠  ASSETS & QUALIDADE:$(NC)"
-	@echo "$(YELLOW)  make dragon-build $(NC) Regera o modelo 3D (tools/dragon → mobile/assets/models/shenlong.glb)"
-	@echo "$(YELLOW)  make dragon-viewer$(NC) Abre o viewer 3D em http://localhost:8099/tools/viewer/index.html#anim=1"
-	@echo "$(YELLOW)  make dragon-shot  $(NC) Renderiza PNGs de inspeção (Chrome headless) em /tmp/shenlong-shots"
-	@echo "$(YELLOW)  make icon         $(NC) Renderiza o ícone/adaptive-icon a partir do modelo 3D"
+	@echo "$(YELLOW)  make art-preview  $(NC) Renderiza a cabeça do Shenlong (arte vetorial do app) em /tmp/shenlong-art"
+	@echo "$(YELLOW)  make icon         $(NC) Gera icon.png e adaptive-icon.png a partir da arte vetorial"
 	@echo "$(YELLOW)  make voice-setup  $(NC) Instala a voz grátis local (Piper pt-BR) — usada quando não há OPENAI_API_KEY"
 	@echo "$(YELLOW)  make gen-voice    $(NC) Regera as frases fixas de Shenlong com a voz de dragão"
 	@echo "$(YELLOW)  make gen-sfx      $(NC) Regenera os efeitos sonoros sintetizados"
@@ -146,28 +144,20 @@ mobile-build-android: mobile-eas-auth-check ## Build Android
 mobile-build-all: mobile-eas-auth-check ## Build iOS + Android
 	@cd mobile && npx --no-install eas build --platform all --profile $(EAS_PROFILE)
 
-# ───────── Shenlong 3D ─────────
-dragon-build: ## Regera o GLB do Shenlong a partir da escultura SDF
-	@node tools/dragon/build.mjs
+# ───────── arte (estilo anime, vetorial) ─────────
+ART := /tmp/shenlong-art
+CHROME_SHOT = google-chrome --headless=new --user-data-dir="$$(mktemp -d)" --hide-scrollbars
 
-dragon-viewer: ## Viewer 3D no navegador (mesmo código da cena do app)
-	@tools/viewer/build.sh
-	@echo "$(GREEN)🐉 http://localhost:8099/tools/viewer/index.html#anim=1  (Ctrl+C para sair)$(NC)"
-	@python3 -m http.server 8099 --bind 127.0.0.1
+art-preview: ## Prévia da cabeça (mesmas camadas que o app desenha com Skia)
+	@mkdir -p $(ART)
+	@server/node_modules/.bin/tsx tools/art/preview.ts $(ART)/head.svg 0.3 >/dev/null
+	@$(CHROME_SHOT) --window-size=1000,1000 --screenshot=$(ART)/head.png "file://$(ART)/head.svg" >/dev/null 2>&1
+	@echo "$(GREEN)✓ $(ART)/head.png$(NC)"
 
-SHOTS ?= /tmp/shenlong-shots
-dragon-shot: ## PNGs de inspeção: pose final, aparição, rosto
-	@tools/viewer/build.sh && mkdir -p $(SHOTS)
-	@(python3 -m http.server 8099 --bind 127.0.0.1 >/dev/null 2>&1 & echo $$! > $(SHOTS)/.srv); sleep 1; \
-	  for a in 0.2 0.5 0.8 1; do tools/viewer/shoot.sh $(SHOTS)/appear_$$a.png "appear=$$a&t=9000" 430x932 >/dev/null; done; \
-	  tools/viewer/shoot.sh $(SHOTS)/face.png "appear=1&t=8000&yaw=-35&pitch=5&dist=6" 600x600 >/dev/null; \
-	  kill $$(cat $(SHOTS)/.srv); echo "$(GREEN)✓ $(SHOTS)$(NC)"
-
-icon: ## Ícone 1024 + adaptive icon renderizados do modelo 3D
-	@tools/viewer/build.sh && mkdir -p $(SHOTS)
-	@(python3 -m http.server 8099 --bind 127.0.0.1 >/dev/null 2>&1 & echo $$! > $(SHOTS)/.srv); sleep 1; \
-	  tools/viewer/shoot.sh $(SHOTS)/icon_raw.png "appear=1&t=8000&speak=0.38&wish=0.25&yaw=-38&pitch=-14&dist=6.0&icon=1&bx=-0.6&by=-0.75&bs=0.34" 1024x1024 >/dev/null; \
-	  tools/viewer/shoot.sh $(SHOTS)/adaptive_raw.png "appear=1&t=8000&speak=0.38&wish=0.25&yaw=-38&pitch=-14&dist=8.6&icon=1&bx=-0.45&by=-0.55&bs=0.26" 1024x1024 >/dev/null; \
-	  kill $$(cat $(SHOTS)/.srv); \
-	  python3 tools/viewer/finish_icon.py $(SHOTS)/icon_raw.png mobile/assets/icon.png && \
-	  python3 tools/viewer/finish_icon.py $(SHOTS)/adaptive_raw.png mobile/assets/adaptive-icon.png && echo "$(GREEN)✓ ícones atualizados$(NC)"
+icon: ## Ícone e ícone adaptativo (Android) a partir da arte
+	@mkdir -p $(ART)
+	@server/node_modules/.bin/tsx tools/art/icon.ts $(ART)/icon.svg 0 >/dev/null
+	@server/node_modules/.bin/tsx tools/art/icon.ts $(ART)/adaptive.svg 0.22 >/dev/null
+	@$(CHROME_SHOT) --window-size=1024,1024 --screenshot=mobile/assets/icon.png "file://$(ART)/icon.svg" >/dev/null 2>&1
+	@$(CHROME_SHOT) --window-size=1024,1024 --screenshot=mobile/assets/adaptive-icon.png "file://$(ART)/adaptive.svg" >/dev/null 2>&1
+	@echo "$(GREEN)✓ mobile/assets/icon.png e adaptive-icon.png$(NC)"

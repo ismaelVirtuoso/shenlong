@@ -5,7 +5,6 @@ import { useKeepAwake } from 'expo-keep-awake';
 import { controller } from './controller';
 import { Overlay } from './Overlay';
 import { Scene } from '@/features/scene/Scene';
-import { DragonView } from '@/features/dragon3d/DragonView';
 
 const REC_OPTIONS = { ...RecordingPresets.LOW_QUALITY, sampleRate: 16000, numberOfChannels: 1, isMeteringEnabled: true };
 
@@ -26,7 +25,6 @@ export default function Experience() {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#04050c' }}>
-      <DragonView />
       <Scene />
       <Overlay />
     </View>

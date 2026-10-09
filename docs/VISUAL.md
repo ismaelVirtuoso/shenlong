@@ -1,4 +1,8 @@
-# Reformulação cinematográfica do Shenlong: auditoria e decisão
+> **Estado atual (decisão final): estilo anime desenhado, 2D em Skia.** Depois de testar o 3D em aparelho,
+> o dono do projeto pediu o visual do próprio Dragon Ball (referência: Shenlong de frente, corpo enrolado,
+> aura verde, rochas e nuvens). Ver a seção 8. As seções 1–7 registram a fase 3D (histórico).
+
+# Visual do Shenlong: do 2D amador ao 3D, e a decisão final pelo estilo anime
 
 ## 1. Auditoria da implementação atual
 | Item | Como está | Veredito |
@@ -64,3 +68,30 @@ Imagens (renders reais, Chrome/SwiftShader): `docs/img/pose-final.jpg`, `docs/im
 1. Validar no iPhone e num Android médio (`make up`).
 2. Se o FPS no Android ficar baixo: `quality: 'low'` por padrão nesse aparelho.
 3. Para subir de patamar: encomendar a cabeça esculpida (ZBrush/Blender) exportada como GLB com os mesmos nomes; o resto da cena continua igual.
+
+
+## 8. Decisão final: estilo anime (2D vetorial no Skia)
+
+**Por quê:** o anime é o visual que a criança reconhece como "o Shenlong"; o 3D procedural nunca chegaria ao
+traço do desenho, e custava caro: three.js no thread JS, GLB de 4,5 MB, ~250 ms/quadro no emulador.
+
+**Como ficou:**
+| Parte | Onde | Técnica |
+|---|---|---|
+| Cabeça (frente, sobrancelhas em V, olhos, focinho com narinas, presas, galhada, tufos) | `mobile/src/features/scene/art/head.ts` | Arte vetorial em camadas (fonte única para app, prévia e ícone), gravada como `SkPicture` e **rasterizada uma vez** em textura na resolução do aparelho; mandíbula e boca são camadas separadas (abrem ao falar) |
+| Olhos "iluminados" | `AnimeDragon.tsx` | Halo vermelho aditivo + íris com núcleo branco-quente + reflexo + brilho horizontal; pulsam e reagem à fala, à voz da criança e ao desejo |
+| Corpo enrolado em volta da cabeça | `AnimeDragon.tsx` | Espinha animada (Catmull-Rom) → **malhas de triângulos** (`drawVertices`) numa `SkPicture` por quadro: aura com borda suave, nanquim, verde, luz, sombra, escamas, barriga bege segmentada e espinhos dorsais |
+| Braços com garras, bigodes dourados | `art/arm.ts`, `AnimeDragon.tsx` | Textura do braço; bigodes ondulando |
+| Céu, aura verde, raios de luz | `Backdrop.tsx`, `AnimeDragon.tsx` | Gradientes; raios girando (textura) |
+| Rochas, nuvens, névoa | `art/landscape.ts`, `Foreground.tsx` | Texturas estáticas com deriva |
+| Aparição | `AnimeDragon.tsx` | "Serpente de luz" que sobe do pilar contornando a tela e ganha as cores ao assentar |
+| Ícone | `tools/art/icon.ts` (`make icon`) | A mesma arte vetorial + aura + esfera de 4 estrelas |
+
+**Desempenho medido (emulador Android, GPU Intel UHD 620, modo produção):** boot 32 ms/quadro (piso do próprio
+emulador), Shenlong presente 48 ms; GPU 18 ms. Lições registradas no código:
+- `BlurMask` grande por quadro derrubava a GPU (percentil de 5 s) → aura feita com faixa de triângulos de alfa decrescente;
+- caminhos dinâmicos complexos caem no rasterizador por software do Skia (máscara na CPU do tamanho da tela,
+  por camada) → corpo em `drawVertices`;
+- centenas de caminhos estáticos por quadro → rasterizados uma vez em textura.
+
+**Removido do app:** `three`, `expo-gl`, o GLB e o pipeline 3D (continuam no histórico do git, commit `802c1d2`).

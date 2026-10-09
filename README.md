@@ -2,11 +2,13 @@
 
 Experiência imersiva de celular: você diz **"Shenlong, apareça!"**, as esferas reagem, o dragão surge e conversa por voz com você (feito para uma criança de 5 anos).
 
-![Shenlong](docs/img/pose-final.jpg) Plano e decisões: [`docs/PLANO.md`](docs/PLANO.md). Roteiro de testes manuais: [`docs/TESTES.md`](docs/TESTES.md).
+<img src="docs/img/shenlong-anime.jpg" width="300" alt="Shenlong"/> <img src="docs/img/icone.jpg" width="200" alt="Ícone"/>
+
+Plano e decisões: [`docs/PLANO.md`](docs/PLANO.md). Roteiro de testes manuais: [`docs/TESTES.md`](docs/TESTES.md).
 
 ```
-mobile/   app Expo SDK 57: Shenlong 3D (three.js + expo-gl) + efeitos Skia; roda no Expo Go
-tools/    dragon/ (gera o modelo 3D GLB) · viewer/ (inspeção/ícone em Chrome headless)
+mobile/   app Expo SDK 57: Shenlong em estilo anime (Skia 2D + Reanimated); roda no Expo Go
+tools/    art/ (prévia da arte e ícone) · voice/ (voz local grátis: Piper)
 server/   backend Hono/Node: /api/stt, /api/chat (NDJSON por frase), /api/tts — as chaves ficam aqui
 ```
 
@@ -29,8 +31,14 @@ Regenerar efeitos sonoros (sintetizados por código): `cd mobile && npm run gen:
 - Sem backend: invocação por voz alta ou toque longo funciona; Shenlong fala com a voz do aparelho (expo-speech) e se despede com elegância.
 - `/debug` (abra no app via `shenlong://debug`, ou no web) pula para qualquer fase da cena.
 
-## Shenlong 3D
-`make dragon-build` regera o modelo · `make dragon-viewer` abre a cena no navegador · `make dragon-shot` gera PNGs de inspeção · `make icon` renderiza o ícone. Detalhes: [`docs/REFORMULACAO-3D.md`](docs/REFORMULACAO-3D.md).
+## Visual (estilo anime)
+A cabeça é arte vetorial em `mobile/src/features/scene/art/head.ts` (mesma fonte para o app, a prévia e o ícone).
+`make art-preview` renderiza a cabeça · `make icon` regera os ícones. Decisões e medições: [`docs/VISUAL.md`](docs/VISUAL.md).
+
+## Voz
+- Sem chave: voz local **grátis** (Piper pt-BR, `make voice-setup`) com efeito "voz de dragão" (ffmpeg: grave ~90 Hz, reverb).
+- Com `OPENAI_API_KEY`: voz da OpenAI com o mesmo efeito, mais o reconhecimento de fala e a conversa (uma chave basta).
+- Frases fixas (abertura, despedida…) vêm pré-geradas no app: `make gen-voice` para regerar.
 
 ## Testes
 `cd mobile && npm test` (máquina de estados, reconhecimento da invocação) · `cd server && npm test` (segmentador de frases, filtros) · `npx tsc --noEmit` nos dois.
@@ -39,4 +47,4 @@ Regenerar efeitos sonoros (sintetizados por código): `cd mobile && npm run gen:
 `cd mobile && eas init && npm run eas:build:ios:preview` / `eas:build:android:preview`. Antes: hospede o backend e ajuste `EXPO_PUBLIC_API_URL` em `eas.json`; troque `BUNDLE_ID` em `app.config.js`. Para publicar nas lojas: ver §8 e §11 do plano (marca/arte próprias, gate parental, política de privacidade).
 
 ## Estado atual
-Implementado: fases 0–9 do plano + configuração de build (10–11). Não verificado em aparelho real (validar: latência do VAD/STT, áudio de gravação↔reprodução no iOS, FPS no Android fraco). Visual 3D conferido em renders reais (Chrome headless) e no app via Expo web.
+Implementado: fases 0–9 do plano + configuração de build (10–11). Não verificado em aparelho real (validar: latência do VAD/STT, áudio de gravação↔reprodução no iOS, FPS no Android fraco). Testado no emulador Android (Expo Go) em modo dev e produção.

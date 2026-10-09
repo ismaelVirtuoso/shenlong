@@ -4,7 +4,6 @@ import { useLocalSearchParams } from 'expo-router';
 import { controller } from './controller';
 import { Overlay } from './Overlay';
 import { Scene } from '@/features/scene/Scene';
-import { DragonView } from '@/features/dragon3d/DragonView';
 import { useStore } from './store';
 import type { Phase } from '@/core/machine';
 import { downgrade } from '@/core/quality';
@@ -26,7 +25,6 @@ export default function Debug() {
   const st = useStore.getState();
   return (
     <View style={{ flex: 1, backgroundColor: '#000' }}>
-      <DragonView />
       <Scene />
       <Overlay />
       <View style={{ position: 'absolute', top: 36, left: 0, right: 0 }}>

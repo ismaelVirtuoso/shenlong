@@ -5,6 +5,7 @@ import { config } from './config.js';
 import { llmAvailable, streamReply, type Turn } from './providers/llm.js';
 import { sttAvailable, transcribe } from './providers/stt.js';
 import { synthesize, ttsAvailable, ttsEngine } from './providers/tts.js';
+import { warmPiper } from './voice/piper.js';
 import { REDIRECT_INPUT, SAFE_OUTPUT, isUnsafe } from './safety.js';
 import { SentenceStream } from './sentences.js';
 
@@ -107,6 +108,8 @@ app.post('/api/chat', async (c) => {
   });
   return new Response(stream, { headers: { 'content-type': 'application/x-ndjson', 'cache-control': 'no-store' } });
 });
+
+if (ttsEngine() === 'piper') warmPiper();
 
 serve({ fetch: app.fetch, port: config.port, hostname: '0.0.0.0' }, (i) => {
   console.log(`🐉 Shenlong server :${i.port}  ouvir(STT)=${sttAvailable()}  voz(TTS)=${ttsEngine() ?? 'nenhuma'}  conversa(IA)=${llmAvailable() ? config.llmProvider : 'não'}`);
