@@ -4,10 +4,9 @@ import { Canvas, Group, useCanvasRef } from '@shopify/react-native-skia';
 import { useDerivedValue } from 'react-native-reanimated';
 import { PROFILES } from '@/core/quality';
 import { Altar, Balls } from './Balls';
-import { Dragon } from './Dragon';
 import { Energy, Lightning } from './Energy';
 import { useSceneValues } from './drive';
-import { FrontClouds, Sky } from './Sky';
+import { FrontClouds } from './Sky';
 import { useSceneStore } from './bridge';
 import type { Layout } from './types';
 
@@ -35,10 +34,8 @@ export function Scene() {
   return (
     <Canvas ref={ref} style={{ position: 'absolute', top: 0, left: 0, width: W, height: H }}>
       <Group transform={shake}>
-        <Sky S={S} L={L} />
         <Altar S={S} L={L} />
         <Energy S={S} L={L} />
-        <Dragon S={S} L={L} />
         <FrontClouds S={S} L={L} />
         <Balls S={S} L={L} />
       </Group>

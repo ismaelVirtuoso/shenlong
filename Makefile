@@ -1,3 +1,4 @@
+.PHONY: dragon-build dragon-viewer dragon-shot icon
 .PHONY: help install install-server install-mobile setup-env up up-mock server server-mock mobile mobile-clear mobile-tunnel \
         gen-voice gen-sfx test typecheck lan-ip fix-inotify-watchers mobile-eas-auth-check \
         mobile-build-ios mobile-build-android mobile-build-all
@@ -28,6 +29,10 @@ help: ## Mostra esta ajuda
 	@echo "$(YELLOW)  make fix-inotify-watchers$(NC) Linux: corrige ENOSPC do Metro"
 	@echo ""
 	@echo "$(BLUE)🛠  ASSETS & QUALIDADE:$(NC)"
+	@echo "$(YELLOW)  make dragon-build $(NC) Regera o modelo 3D (tools/dragon → mobile/assets/models/shenlong.glb)"
+	@echo "$(YELLOW)  make dragon-viewer$(NC) Abre o viewer 3D em http://localhost:8099/tools/viewer/index.html#anim=1"
+	@echo "$(YELLOW)  make dragon-shot  $(NC) Renderiza PNGs de inspeção (Chrome headless) em /tmp/shenlong-shots"
+	@echo "$(YELLOW)  make icon         $(NC) Renderiza o ícone/adaptive-icon a partir do modelo 3D"
 	@echo "$(YELLOW)  make gen-voice    $(NC) Pré-gera as frases fixas de Shenlong (precisa OPENAI_API_KEY)"
 	@echo "$(YELLOW)  make gen-sfx      $(NC) Regenera os efeitos sonoros sintetizados"
 	@echo "$(YELLOW)  make test         $(NC) Testes (mobile + server)  | make typecheck: tsc nos dois"
@@ -118,3 +123,29 @@ mobile-build-android: mobile-eas-auth-check ## Build Android
 
 mobile-build-all: mobile-eas-auth-check ## Build iOS + Android
 	@cd mobile && npx --no-install eas build --platform all --profile $(EAS_PROFILE)
+
+# ───────── Shenlong 3D ─────────
+dragon-build: ## Regera o GLB do Shenlong a partir da escultura SDF
+	@node tools/dragon/build.mjs
+
+dragon-viewer: ## Viewer 3D no navegador (mesmo código da cena do app)
+	@tools/viewer/build.sh
+	@echo "$(GREEN)🐉 http://localhost:8099/tools/viewer/index.html#anim=1  (Ctrl+C para sair)$(NC)"
+	@python3 -m http.server 8099 --bind 127.0.0.1
+
+SHOTS ?= /tmp/shenlong-shots
+dragon-shot: ## PNGs de inspeção: pose final, aparição, rosto
+	@tools/viewer/build.sh && mkdir -p $(SHOTS)
+	@(python3 -m http.server 8099 --bind 127.0.0.1 >/dev/null 2>&1 & echo $$! > $(SHOTS)/.srv); sleep 1; \
+	  for a in 0.2 0.5 0.8 1; do tools/viewer/shoot.sh $(SHOTS)/appear_$$a.png "appear=$$a&t=9000" 430x932 >/dev/null; done; \
+	  tools/viewer/shoot.sh $(SHOTS)/face.png "appear=1&t=8000&yaw=-35&pitch=5&dist=6" 600x600 >/dev/null; \
+	  kill $$(cat $(SHOTS)/.srv); echo "$(GREEN)✓ $(SHOTS)$(NC)"
+
+icon: ## Ícone 1024 + adaptive icon renderizados do modelo 3D
+	@tools/viewer/build.sh && mkdir -p $(SHOTS)
+	@(python3 -m http.server 8099 --bind 127.0.0.1 >/dev/null 2>&1 & echo $$! > $(SHOTS)/.srv); sleep 1; \
+	  tools/viewer/shoot.sh $(SHOTS)/icon_raw.png "appear=1&t=8000&speak=0.38&wish=0.25&yaw=-38&pitch=-14&dist=6.0&icon=1&bx=-0.6&by=-0.75&bs=0.34" 1024x1024 >/dev/null; \
+	  tools/viewer/shoot.sh $(SHOTS)/adaptive_raw.png "appear=1&t=8000&speak=0.38&wish=0.25&yaw=-38&pitch=-14&dist=8.6&icon=1&bx=-0.45&by=-0.55&bs=0.26" 1024x1024 >/dev/null; \
+	  kill $$(cat $(SHOTS)/.srv); \
+	  python3 tools/viewer/finish_icon.py $(SHOTS)/icon_raw.png mobile/assets/icon.png && \
+	  python3 tools/viewer/finish_icon.py $(SHOTS)/adaptive_raw.png mobile/assets/adaptive-icon.png && echo "$(GREEN)✓ ícones atualizados$(NC)"

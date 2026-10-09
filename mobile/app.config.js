@@ -24,7 +24,7 @@ module.exports = ({ config }) => ({
   android: {
     package: BUNDLE_ID,
     permissions: ['RECORD_AUDIO', 'VIBRATE'],
-    adaptiveIcon: { backgroundColor: '#04050c', foregroundImage: './assets/icon.png' },
+    adaptiveIcon: { backgroundColor: '#03100b', foregroundImage: './assets/adaptive-icon.png' },
     predictiveBackGestureEnabled: false,
   },
   web: { bundler: 'metro', favicon: './assets/icon.png' },
@@ -37,7 +37,7 @@ module.exports = ({ config }) => ({
     ],
     [
       'expo-splash-screen',
-      { image: './assets/icon.png', imageWidth: 180, resizeMode: 'contain', backgroundColor: '#04050c' },
+      { image: './assets/icon.png', imageWidth: 220, resizeMode: 'contain', backgroundColor: '#03100b' },
     ],
   ],
   experiments: { typedRoutes: true },
