@@ -1,0 +1,24 @@
+{
+  "cli": { "version": ">= 14.0.0", "appVersionSource": "local" },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": { "simulator": false },
+      "android": { "buildType": "apk" }
+    },
+    "preview": {
+      "channel": "preview",
+      "distribution": "internal",
+      "env": { "EXPO_PUBLIC_API_URL": "https://SEU-BACKEND.example.com" },
+      "ios": { "resourceClass": "m-medium" },
+      "android": { "buildType": "apk" }
+    },
+    "production": {
+      "channel": "production",
+      "autoIncrement": false,
+      "env": { "EXPO_PUBLIC_API_URL": "https://SEU-BACKEND.example.com" }
+    }
+  },
+  "submit": { "production": {} }
+}

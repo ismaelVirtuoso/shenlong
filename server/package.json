@@ -1,0 +1,27 @@
+{
+  "name": "shenlong-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "mock": "MOCK=1 tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "gen:voice": "tsx scripts/gen-voice.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.132.1",
+    "@hono/node-server": "^2.1.4",
+    "dotenv": "^18.0.6",
+    "hono": "^4.13.13",
+    "openai": "^6.49.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
+  }
+}
