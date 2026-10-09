@@ -7,21 +7,17 @@ mobile/   app Expo SDK 57 (Skia + Reanimated), roda no Expo Go
 server/   backend Hono/Node: /api/stt, /api/chat (NDJSON por frase), /api/tts — as chaves ficam aqui
 ```
 
-## Rodar (Expo Go)
+## Rodar no celular (Expo Go)
 
-1. **Backend** (celular e computador na mesma rede Wi‑Fi):
-   ```bash
-   cd server
-   cp .env.example .env     # preencha OPENAI_API_KEY (STT+TTS) e ANTHROPIC_API_KEY (chat)
-   npm start                # porta 8787. Sem chaves: `npm run mock` (respostas de teste)
-   ```
-2. **App**:
-   ```bash
-   cd mobile
-   npm start                # expo start --go → leia o QR com o Expo Go
-   ```
-   O app descobre o IP do computador sozinho (via Metro). Para outro backend: `EXPO_PUBLIC_API_URL=https://...`.
-3. Toque na tela, diga **"Shenlong, apareça!"** (ou segure a tela por ~1 s) e converse.
+```bash
+make install     # dependências + cria server/.env
+# edite server/.env: OPENAI_API_KEY (STT+TTS) e ANTHROPIC_API_KEY (chat)
+make up          # backend (:8787) + Expo; leia o QR com o Expo Go
+```
+- Celular e PC na **mesma rede Wi‑Fi**. Se o app não conectar, libere as portas: `sudo ufw allow 8081,8787/tcp`.
+- Sem chaves ainda: `make up-mock` (invoque segurando a tela ~1 s; voz do aparelho).
+- Rede restrita / iPhone sem LAN: `make mobile-tunnel` (e hospede o backend, definindo `EXPO_PUBLIC_API_URL`).
+- Outros: `make help` (server, mobile-clear, test, typecheck, gen-voice, mobile-build-*).
 
 Opcional — voz fixa com latência zero (abertura/despedida): `cd server && npm run gen:voice`.
 Regenerar efeitos sonoros (sintetizados por código): `cd mobile && npm run gen:sfx`.
