@@ -79,9 +79,12 @@ export function sdfMesh(name, m, colorFn, ao) {
     const nn = [m.normals[q * 3], m.normals[q * 3 + 1], m.normals[q * 3 + 2]];
     const rgb = colorFn(p, nn);
     mask[q] = rgb[3] ?? 0; // 1 = mucosa (boca): lisa, úmida, sem escamas
-    const occ = (ao ? 0.35 + 0.65 * ao[q] : 1) * (mask[q] ? 0.6 : 1);
+    // boca: AO suave (cavidade esmagava a cor para ~20%); pele: AO forte de costume
+    const occ = mask[q]
+      ? (ao ? 0.72 + 0.28 * ao[q] : 1)
+      : (ao ? 0.35 + 0.65 * ao[q] : 1);
     for (let c = 0; c < 3; c++) colors[q * 4 + c] = Math.round(srgbToLinear(Math.min(1, Math.max(0, rgb[c]))) * occ * 255);
-    colors[q * 4 + 3] = Math.round((ao ? ao[q] : 1) * (mask[q] ? 0.35 : 1) * 255); // alpha = AO (oclusão especular/contraluz)
+    colors[q * 4 + 3] = Math.round((ao ? (mask[q] ? 0.55 + 0.45 * ao[q] : ao[q]) : 1) * 255); // alpha = AO (oclusão especular/contraluz)
   }
   return { name, positions: m.positions, normals: m.normals, colors, mask, indices: m.indices };
 }

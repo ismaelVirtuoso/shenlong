@@ -19,7 +19,7 @@ export class DragonScene {
   private atmo: Atmosphere;
   private shake = new THREE.Vector3();
   /** câmera de inspeção (viewer): yaw/pitch em graus ao redor da cabeça */
-  debugOrbit: { yaw: number; pitch: number; dist: number } | null = null;
+  debugOrbit: { yaw: number; pitch: number; dist: number; mouth?: boolean } | null = null;
 
   constructor(private renderer: THREE.WebGLRenderer, asset: DragonAsset, readonly quality: QualityLevel, width: number, height: number) {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -58,7 +58,8 @@ export class DragonScene {
     if (this.debugOrbit) {
       const { yaw, pitch, dist } = this.debugOrbit;
       const y = (yaw * Math.PI) / 180, p = (pitch * Math.PI) / 180;
-      const c = HEAD_FINAL.clone();
+      // centro: crânio, ou a boca (no espaço da cabeça) para inspecionar o interior
+      const c = this.debugOrbit.mouth ? this.dragon.head.localToWorld(new THREE.Vector3(0, -0.2, 0.75)) : HEAD_FINAL.clone();
       this.camera.position.set(c.x + Math.sin(y) * Math.cos(p) * dist, c.y + Math.sin(p) * dist, c.z + Math.cos(y) * Math.cos(p) * dist);
       this.camera.lookAt(c);
     } else {

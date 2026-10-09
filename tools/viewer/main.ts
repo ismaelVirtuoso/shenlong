@@ -14,10 +14,11 @@ async function main() {
   canvas.width = w; canvas.height = h;
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(1);
-  const buf = await (await fetch('/mobile/assets/models/shenlong.glb')).arrayBuffer();
+  // sem cache: o Chrome headless reaproveitava um GLB antigo depois de `make dragon-build`
+  const buf = await (await fetch(`/mobile/assets/models/shenlong.glb?v=${Date.now()}`, { cache: 'no-store' })).arrayBuffer();
   const asset = parseGlb(buf);
   const scene = new DragonScene(renderer, asset, (P.get('q') as QualityLevel) ?? 'high', w, h);
-  if (P.has('yaw')) scene.debugOrbit = { yaw: num('yaw', 0), pitch: num('pitch', 0), dist: num('dist', 5) };
+  if (P.has('yaw')) scene.debugOrbit = { yaw: num('yaw', 0), pitch: num('pitch', 0), dist: num('dist', 5), mouth: P.has('mouth') };
 
   const T = num('t', 8000);
   const inp: DragonInput = {
@@ -30,6 +31,16 @@ async function main() {
     scene.update(inp);
   }
   if (P.has('icon')) addIconProps(scene);
+  if (P.has('jawonly')) {
+    // inspeção do interior da boca: esconde a parte de cima da cabeça (fica só a mandíbula)
+    const d = (scene as unknown as { dragon: { head: THREE.Group; jaw: THREE.Group } }).dragon;
+    d.head.children.forEach((c) => { if (c !== d.jaw) c.visible = false; });
+  }
+  if (P.has('nobody')) {
+    // inspeção: só a cabeça (sem corpo, patas e espinhos); luzes e céu continuam
+    const d = (scene as unknown as { dragon: { root: THREE.Group; head: THREE.Group } }).dragon;
+    d.root.children.forEach((c) => { if (c !== d.head) c.visible = false; });
+  }
   // isolamento p/ depuração: nodragon, hide=nome1,nome2 (tipos: Sprite, Mesh…)
   if (P.has('nodragon')) scene.scene.getObjectByName('dragon')!.visible = false;
   for (const k of (P.get('hide') ?? '').split(',').filter(Boolean))

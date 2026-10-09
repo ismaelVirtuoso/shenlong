@@ -102,16 +102,23 @@ export function createMaterials(): DragonMaterials {
         vec3 n0 = normalize(vObjN);
         vec3 bl = pow(abs(n0), vec3(4.0)); bl /= (bl.x + bl.y + bl.z);
         vec3 P = vObjPos * uTri;
+        // máscara do GLB + heurística pela cor (vermelho >> verde = mucosa),
+        // caso o atributo falhe em malhas que compartilham o material (patas)
+        float mucCol = smoothstep(0.52, 0.72, diffuseColor.r / max(diffuseColor.r + diffuseColor.g, 1e-4));
+        float muc = max(vMask, mucCol);
         vec4 det = texture2D(uDet, P.zy) * bl.x + texture2D(uDet, P.xz) * bl.y + texture2D(uDet, P.xy) * bl.z;
-        det = mix(det, vec4(0.85, 0.5, 0.5, 0.5), vMask); // boca: lisa, sem brilho exagerado
-        diffuseColor.rgb *= det.r * 1.12 * mix(vec3(0.92 + 0.16 * det.b, 1.0, 0.9 + 0.16 * det.b), vec3(1.0), vMask);`)
-      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>\nroughnessFactor = clamp(det.g * 1.05, 0.18, 0.92);`)
+        det = mix(det, vec4(1.08, 0.2, 0.4, 0.5), muc); // boca: úmida, sem escamas
+        diffuseColor.rgb *= mix(det.r * 1.12 * vec3(0.92 + 0.16 * det.b, 1.0, 0.9 + 0.16 * det.b), vec3(1.12), muc);`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>\nroughnessFactor = mix(clamp(det.g * 1.05, 0.18, 0.92), 0.22, muc);`)
       .replace('#include <normal_fragment_maps>', `
         vec3 tx = texture2D(uScaleN, P.zy).xyz * 2.0 - 1.0;
         vec3 ty = texture2D(uScaleN, P.xz).xyz * 2.0 - 1.0;
         vec3 tz = texture2D(uScaleN, P.xy).xyz * 2.0 - 1.0;
-        float ns = 0.75 * (1.0 - vMask);
+        float ns = 0.75 * (1.0 - muc);
         tx.xy *= ns; ty.xy *= ns; tz.xy *= ns;
+        // mucosa lisa: o z da textura também entra na mistura (whiteout) e, com a boca úmida
+        // (rugosidade baixa), desenhava escamas no reflexo
+        tx.z = mix(tx.z, 1.0, muc); ty.z = mix(ty.z, 1.0, muc); tz.z = mix(tz.z, 1.0, muc);
         tx = vec3(tx.xy + n0.zy, abs(tx.z) * n0.x);
         ty = vec3(ty.xy + n0.xz, abs(ty.z) * n0.y);
         tz = vec3(tz.xy + n0.xy, abs(tz.z) * n0.z);

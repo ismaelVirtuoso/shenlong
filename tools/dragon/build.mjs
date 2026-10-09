@@ -31,31 +31,38 @@ meshes.push(sculpt('head_lo', headUpper, HEAD_BOX, 0.03, headColor));
 meshes.push(sculpt('jaw_hi', jaw, JAW_BOX, 0.015, jawColor));
 meshes.push(sculpt('jaw_lo', jaw, JAW_BOX, 0.024, jawColor));
 
-// ── dentes ──
-const IVORY = hex('#f1ead2'), GUM = hex('#c9b98e');
-const toothColor = (t) => lerp3(GUM, IVORY, Math.min(1, t * 3));
+// ── dentes: lâminas recurvadas (seção achatada no sentido da mandíbula), raiz na gengiva ──
+const GUM_ROOT = hex('#b3485a'), BASE_Y = hex('#ddd0ad'), IVORY = hex('#f6f1e2'), TIP = hex('#ffffff'); // marfim claro (a luz-chave é dourada)
+const toothColor = (t) =>
+  t < 0.1 ? lerp3(GUM_ROOT, BASE_Y, t / 0.1) : t < 0.5 ? lerp3(BASE_Y, IVORY, (t - 0.1) / 0.4) : lerp3(IVORY, TIP, (t - 0.5) / 0.5);
 function teeth(name, f, yAt, dirY, list) {
   const b = new MeshBuilder(name);
   for (const [z, len, r] of list) {
     const ex = edgeX(f, yAt(z), z);
     if (ex == null) continue;
+    const fang = len > 0.15;
     for (const s of [1, -1]) {
-      const bx = s * (ex - 0.03), by = yAt(z) - dirY * 0.02;
-      const tip = [bx * 0.98, by + dirY * len, z - len * 0.25];
-      b.tube([[bx, by, z], [bx, by + dirY * len * 0.4, z], [bx, by + dirY * len * 0.75, z - len * 0.1], tip], {
-        rings: 6, sides: 8, radius: (t) => r * (1 - t) ** 0.7, color: toothColor,
+      const bx = s * (ex - 0.035 - r * 0.3), by = yAt(z) - dirY * 0.03; // raiz 3 cm dentro da gengiva
+      const back = len * (fang ? 0.38 : 0.24); // recurvados para trás (presas mais em gancho)
+      const out = fang ? s * 0.05 : s * 0.012; // presas atravessam o lábio; demais levemente para fora
+      const L = len + 0.04;
+      b.tube([[bx, by, z], [bx + out * 0.2, by + dirY * L * 0.35, z + len * 0.04], [bx * 0.99 + out * 0.6, by + dirY * L * 0.75, z - back * 0.45], [bx * 0.96 + out, by + dirY * L, z - back]], {
+        rings: fang ? 16 : 10, sides: 12, flat: fang ? 0.75 : 0.9, color: toothColor,
+        radius: (t) => r * (1 - t) ** 0.7 * (1 + 0.35 * Math.max(0, 1 - t / 0.16)),
       });
     }
   }
   return b.build();
 }
-// [z, comprimento, raio]
+// [z, comprimento, raio]: molares → pré-molares → PRESA imponente → incisivos
 meshes.push(teeth('teeth_upper', headBody, (z) => mouthY(z) + 0.004, -1, [
-  [0.08, 0.06, 0.022], [0.24, 0.07, 0.024], [0.4, 0.075, 0.025], [0.56, 0.08, 0.026], [0.72, 0.085, 0.026],
-  [0.88, 0.09, 0.026], [1.02, 0.22, 0.04], [1.18, 0.09, 0.024], [1.3, 0.07, 0.02],
+  [0.02, 0.07, 0.042], [0.12, 0.08, 0.042], [0.22, 0.095, 0.04], [0.34, 0.11, 0.04], [0.46, 0.125, 0.04],
+  [0.58, 0.14, 0.042], [0.7, 0.16, 0.044], [0.82, 0.18, 0.046], [0.96, 0.4, 0.075], [1.1, 0.15, 0.038],
+  [1.2, 0.12, 0.032], [1.3, 0.1, 0.028],
 ]));
-meshes.push(teeth('teeth_lower', jaw, (z) => mouthY(z) - 0.014, 1, [
-  [0.12, 0.05, 0.02], [0.28, 0.06, 0.022], [0.44, 0.065, 0.023], [0.6, 0.07, 0.024], [0.76, 0.07, 0.024], [0.9, 0.16, 0.034], [1.1, 0.06, 0.02],
+meshes.push(teeth('teeth_lower', (x, y, z) => jaw(x, y, z, false), (z) => mouthY(z) - 0.014, 1, [
+  [0.08, 0.065, 0.04], [0.18, 0.075, 0.038], [0.3, 0.09, 0.038], [0.42, 0.105, 0.038], [0.54, 0.12, 0.038],
+  [0.66, 0.13, 0.04], [0.82, 0.32, 0.066], [0.96, 0.13, 0.036], [1.08, 0.1, 0.03], [1.2, 0.085, 0.026],
 ]));
 log('dentes');
 
@@ -157,13 +164,15 @@ log('dentes');
   }
   claws.tube([[0, -0.88, -0.1], [0, -0.9, -0.18], [0, -0.95, -0.22], [0, -1.0, -0.22]], { rings: 8, sides: 8, color: cc, radius: (t) => 0.025 * (1 - t) + 0.002 });
   const c = claws.build();
-  // mescla pata + garras numa malha só
+  // mescla pata + garras numa malha só (mask=0: usa o material da cabeça sem mucosa)
   const off = m.positions.length / 3;
+  const nLeg = m.positions.length / 3 + c.positions.length / 3;
   meshes.push({
     name: 'leg',
     positions: Float32Array.from([...m.positions, ...c.positions]),
     normals: Float32Array.from([...m.normals, ...c.normals]),
     colors: Uint8Array.from([...m.colors, ...c.colors]),
+    mask: new Float32Array(nLeg), // zeros — evita atributo ausente no shader da cabeça
     indices: Uint32Array.from([...m.indices, ...Array.from(c.indices, (i) => i + off)]),
   });
   log('pata');

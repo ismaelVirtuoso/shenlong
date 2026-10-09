@@ -32,13 +32,23 @@ export function createSpine(count: number): Spine {
 /** peso do viés do dorso para a câmera no alvo (menor = barriga mais visível no lado de dentro das curvas) */
 const AWAY_W = 0.25;
 /** o dorso nunca vira menos que isto para a câmera (cos): a barriga não fica de frente */
-const MIN = 0.05;
+const MIN = 0.3;
 /** alvos do dorso por anel (reaproveitado entre quadros) */
 let targets = new Float32Array(0);
 let tmp = new Float32Array(0);
 
-export function computeFrames(sp: Spine, up0: THREE.Vector3, away?: THREE.Vector3, bias = 0) {
-  const { p, t, n, b, count } = sp;
+const sstep = (a: number, b: number, x: number) => {
+  const k = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return k * k * (3 - 2 * k);
+};
+
+/**
+ * `bellyLen`: até esse comprimento de arco a BARRIGA fica voltada para `away` (pescoço de frente,
+ * como no desenho); depois torce aos poucos (até 1,6×) para o comportamento normal dos laços.
+ */
+export function computeFrames(sp: Spine, up0: THREE.Vector3, away?: THREE.Vector3, bias = 0, bellyLen = 0) {
+  const { p, t, n, b, s, count } = sp;
+  const neck = (i: number) => (bellyLen > 0 ? 1 - sstep(bellyLen, bellyLen * 1.6, s[i]!) : 0);
   for (let i = 0; i < count; i++) {
     const a = Math.max(0, i - 1), c = Math.min(count - 1, i + 1);
     let x = p[c * 3]! - p[a * 3]!, y = p[c * 3 + 1]! - p[a * 3 + 1]!, z = p[c * 3 + 2]! - p[a * 3 + 2]!;
@@ -60,10 +70,11 @@ export function computeFrames(sp: Spine, up0: THREE.Vector3, away?: THREE.Vector
       const kl = Math.hypot(kx, ky, kz);
       const curv = Math.min(1, kl * 6); // ~0 em trechos retos/inflexões
       if (kl > 1e-5) { kx /= kl; ky /= kl; kz /= kl; }
-      targets[i * 4] = -kx * curv + away!.x * AWAY_W;
-      targets[i * 4 + 1] = -ky * curv + away!.y * AWAY_W;
-      targets[i * 4 + 2] = -kz * curv + away!.z * AWAY_W;
-      targets[i * 4 + 3] = curv;
+      const f = neck(i);
+      targets[i * 4] = (-kx * curv + away!.x * AWAY_W) * (1 - f) - away!.x * f;
+      targets[i * 4 + 1] = (-ky * curv + away!.y * AWAY_W) * (1 - f) - away!.y * f;
+      targets[i * 4 + 2] = (-kz * curv + away!.z * AWAY_W) * (1 - f) - away!.z * f;
+      targets[i * 4 + 3] = curv * (1 - f) + f;
     }
     // suaviza ao longo da coluna (2 passadas de média móvel ±R): a torção fica gradual, sem "fita torcida"
     const R = 9;
@@ -94,10 +105,12 @@ export function computeFrames(sp: Spine, up0: THREE.Vector3, away?: THREE.Vector
       const al = Math.hypot(ax, ay, az);
       if (al > 1e-3) {
         ax /= al; ay /= al; az /= al;
-        // o dorso nunca fica de costas para a câmera: a barriga aparece de lado, não de frente
-        const wx = away!.x - (away!.x * tx + away!.y * ty + away!.z * tz) * tx;
-        const wy = away!.y - (away!.x * tx + away!.y * ty + away!.z * tz) * ty;
-        const wz = away!.z - (away!.x * tx + away!.y * ty + away!.z * tz) * tz;
+        // fora do pescoço o dorso nunca fica de costas para a câmera (barriga de lado, não de frente);
+        // no pescoço vale o inverso: o dorso nunca vira para a câmera
+        const sg = neck(i) > 0.5 ? -1 : 1;
+        const wx = sg * (away!.x - (away!.x * tx + away!.y * ty + away!.z * tz) * tx);
+        const wy = sg * (away!.y - (away!.x * tx + away!.y * ty + away!.z * tz) * ty);
+        const wz = sg * (away!.z - (away!.x * tx + away!.y * ty + away!.z * tz) * tz);
         const wl = Math.hypot(wx, wy, wz);
         if (wl > 0.2) {
           const face = (ax * wx + ay * wy + az * wz) / wl;
@@ -108,7 +121,9 @@ export function computeFrames(sp: Spine, up0: THREE.Vector3, away?: THREE.Vector
             ax /= l3; ay /= l3; az /= l3;
           }
         }
-        const w = bias * Math.min(1, i / 12) * (0.35 + 0.65 * curv);
+        // peso quase total logo após o pescoço: só o transporte (sem alvo) deixava a orientação
+        // "derivar" com a ondulação, e o S do pescoço mostrava a barriga inteira de frente
+        const w = bias * Math.min(1, i / 8) * (0.7 + 0.3 * curv);
         nx += (ax - nx) * w; ny += (ay - ny) * w; nz += (az - nz) * w;
         const d2 = nx * tx + ny * ty + nz * tz;
         nx -= d2 * tx; ny -= d2 * ty; nz -= d2 * tz;

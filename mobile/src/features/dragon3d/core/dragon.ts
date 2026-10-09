@@ -15,10 +15,12 @@ const sstep = (a: number, b: number, x: number) => {
 /** Pose final da cabeça (mundo) — ver DragonScene p/ câmera. */
 export const HEAD_FINAL = new THREE.Vector3(0.35, 2.45, 4.8);
 /** escala da cabeça esculpida em relação ao corpo */
-const HEAD_SCALE = 1.75;
+const HEAD_SCALE = 1.9;
 
 const SPIKE_STEP = 0.36;
 const AWAY = new THREE.Vector3(0.15, 0.35, 1).normalize(); // dorso p/ a câmera: barriga nas bordas dos laços
+/** trecho do corpo (a partir da cabeça) com a barriga de frente para a câmera */
+const BELLY_LEN = 8;
 const LEGS: [number, number][] = [[3.0, 1], [3.0, -1], [12.5, 1], [12.5, -1]];
 
 /** Cor do corpo em função da posição angular (0 = dorso, 0.5 = ventre). */
@@ -130,7 +132,7 @@ export class Dragon {
     this.rings = hi ? 160 : quality === 'medium' ? 130 : 100;
     const sides = hi ? 32 : quality === 'medium' ? 26 : 20;
     this.spine = createSpine(this.rings);
-    this.body = new GpuTube(this.rings, sides, { vRepeat: 3, flatBelly: 0.55, uScale: 1.15, colors: bodyColor });
+    this.body = new GpuTube(this.rings, sides, { vRepeat: 4, flatBelly: 0.5, uScale: 1.2, colors: bodyColor });
     bodySpine.uSpine.value = this.body.uniforms.uSpine.value;
     this.bodyMesh = new THREE.Mesh(this.body.geometry, mats.body);
     this.bodyMesh.frustumCulled = false;
@@ -211,9 +213,9 @@ export class Dragon {
     this.head.updateMatrixWorld(true);
 
     // mandíbula: envelope de fala (sílabas ~5 Hz) + rugido no desejo
-    // boca entreaberta em repouso (dentes à mostra, como a serpente que sibila antes do bote)
-    const jawOpen = 0.1 + inp.speak * (0.12 + 0.42 * env) + 0.25 * inp.wish + 0.1 * inp.poke;
-    this.jaw.rotation.x = jawOpen * 0.55;
+    // boca entreaberta em repouso (presas à mostra); fala abre o suficiente p/ ver língua/palato
+    const jawOpen = 0.22 + inp.speak * (0.2 + 0.55 * env) + 0.3 * inp.wish + 0.1 * inp.poke;
+    this.jaw.rotation.x = jawOpen * 0.7;
 
     // olhos: seguem a câmera, piscam, brilham ao falar/ouvir/desejo
     const ph = t % 4.6;
@@ -251,15 +253,17 @@ export class Dragon {
       }
       sp.p[i * 3] = pt.x; sp.p[i * 3 + 1] = pt.y; sp.p[i * 3 + 2] = pt.z;
       sp.s[i] = s;
-      // perfil: pescoço → corpo cheio → cauda; some suavemente abaixo da raiz
+      // perfil: peito largo atrás da cabeça, afunila até a ponta da cauda
       const k = s / BL;
-      let r = 0.5 + 0.1 * sstep(0, 0.12, k) - 0.24 * sstep(0.55, 1, k);
+      // (0,85 no pescoço casa com o da cabeça; peito 1,03; ~0,2 na ponta da cauda)
+      let r = 0.85 + 0.18 * sstep(0, 0.1, k) - 0.83 * Math.pow(sstep(0.1, 1, k), 0.7);
       r *= sstep(-0.2, 0.6, u);
       sp.r[i] = Math.max(0.0005, r);
     }
     const P2 = performance.now();
-    // dorso tende a ficar voltado para quem olha; a barriga (e a linha vermelha) aparece nas bordas
-    computeFrames(sp, this.v2.set(0, 1, 0).applyQuaternion(this.head.quaternion), AWAY, 0.6);
+    // pescoço com a barriga de frente para quem olha (como no desenho); depois o dorso volta
+    // para a câmera e a barriga aparece nas bordas/dentro dos laços
+    computeFrames(sp, this.v2.set(0, 1, 0).applyQuaternion(this.head.quaternion), AWAY, 0.6, BELLY_LEN * front);
     const P3 = performance.now();
     this.body.update(sp);
     const P4 = performance.now();
@@ -299,7 +303,7 @@ export class Dragon {
       this.m4.makeBasis(X, Y, Z);
       leg.quaternion.setFromRotationMatrix(this.m4);
       leg.rotateX(paddle);
-      const sc = 1.25 * (r / 0.55);
+      const sc = 1.15 * (r / 0.85);
       leg.scale.set(side * sc, sc, sc);
       leg.position.fromArray(sp.p, i * 3).addScaledVector(B, side * r * 0.62).addScaledVector(N, -r * 0.3);
     });

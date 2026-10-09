@@ -113,3 +113,19 @@ com a linha vermelha, galhada marrom, olhos vermelhos amendoados, juba em tufos,
 | Chifres mais marrons; juba mais anime | Galhada `#3a2410 → #7e5428`; juba em tufos finos (bochechas, mandíbula, sobrancelhas, nuca, crista) | `tools/dragon/build.mjs`, `head.mjs` |
 | Cenário vazio | Pilares de rocha com topo de grama, cordilheira azulada e chão (estilo dos cenários do anime), em poucas malhas | `core/landscape.ts` |
 | Ícone | Novo render da pose atual; corrigido o acabamento que escurecia a imagem inteira (`ImageChops.add(scale=2.2)` dividia tudo por 2,2) | `make icon`, `tools/viewer/finish_icon.py` |
+
+## 10. Cabeça, boca, dentes e volume do corpo
+
+| Pedido | O que mudou | Onde |
+|---|---|---|
+| Formato da cabeça | Crânio mais largo, focinho mais estreito e longo que afina e achata na ponta, aros nas narinas viradas para cima, sobrancelhas mais orgânicas; canto da boca arredondado; cabeça maior (`HEAD_SCALE` 1,9) para acompanhar o corpo mais grosso | `tools/dragon/head.mjs`, `core/dragon.ts` |
+| Interior da boca "de uma cor só" | Cada tecido com forma e cor: **palato** em abóbada (vinho, com rugas na cor), **gengivas** rosadas nas bordas, **assoalho** rebaixado e escuro, **língua** de verdade (volume, sulco central, dorso mais claro, ponta arredondada), garganta escurecendo. Mucosa úmida e lisa no shader (sem escamas, AO suave) | `head.mjs` (`palateLift`, `floorDrop`, `tongue`, cores), `parts.mjs`, `core/materials.ts` |
+| Dentes realistas e imponentes | Mais dentes, em **lâmina recurvada** (seção achatada), raiz na gengiva, base marfim → ponta branca; molares curtos atrás, presas grandes em cima e embaixo (as de cima aparecem por fora do lábio com a boca fechada); boca entreaberta em repouso e mais aberta ao falar | `tools/dragon/build.mjs`, `core/dragon.ts` |
+| Corpo "de cobra" | Perfil de raio novo: 0,85 no pescoço (casa com a cabeça) → **1,08 no peito** → afunila até ~0,2 na cauda (antes era quase cilíndrico, ~0,6); escamas repetidas 4× na volta para não esticarem; patas proporcionais ao raio | `core/dragon.ts` |
+| Orientação do corpo | Garganta creme do pescoço voltada para quem olha (como na referência) e o resto com o dorso verde de frente; o alvo agora pesa quase por inteiro logo após o pescoço, então a orientação não "deriva" com a ondulação (antes a barriga aparecia de frente só em alguns instantes) | `core/tube.ts` (`computeFrames`) |
+
+Bugs de inspeção corrigidos no caminho:
+- O viewer reaproveitava um GLB antigo do cache do Chrome depois de `make dragon-build`; agora busca sem cache.
+- Na mistura triplanar das normais, o `z` da textura de escamas ainda modulava a mucosa e desenhava escamas no reflexo da boca úmida.
+
+O viewer ganhou parâmetros de inspeção: `mouth` (órbita centrada na boca), `jawonly` (esconde a parte de cima da cabeça) e `nobody` (esconde o corpo).
