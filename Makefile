@@ -1,4 +1,4 @@
-.PHONY: art-preview icon voice-setup check-keys
+.PHONY: dragon-build dragon-viewer dragon-shot icon voice-setup check-keys
 .PHONY: help install install-server install-mobile setup-env up up-mock server server-mock mobile mobile-clear mobile-tunnel \
         gen-voice gen-sfx test typecheck lan-ip fix-inotify-watchers mobile-eas-auth-check \
         mobile-build-ios mobile-build-android mobile-build-all
@@ -29,9 +29,11 @@ help: ## Mostra esta ajuda
 	@echo "$(YELLOW)  make fix-inotify-watchers$(NC) Linux: corrige ENOSPC do Metro"
 	@echo ""
 	@echo "$(BLUE)🛠  ASSETS & QUALIDADE:$(NC)"
-	@echo "$(YELLOW)  make art-preview  $(NC) Renderiza a cabeça do Shenlong (arte vetorial do app) em /tmp/shenlong-art"
-	@echo "$(YELLOW)  make icon         $(NC) Gera icon.png e adaptive-icon.png a partir da arte vetorial"
-	@echo "$(YELLOW)  make voice-setup  $(NC) Instala a voz grátis local (Piper pt-BR) — usada quando não há OPENAI_API_KEY"
+	@echo "$(YELLOW)  make dragon-build $(NC) Regera o modelo 3D (tools/dragon → mobile/assets/models/shenlong.glb)"
+	@echo "$(YELLOW)  make dragon-viewer$(NC) Abre o viewer 3D em http://localhost:8099/tools/viewer/index.html#anim=1"
+	@echo "$(YELLOW)  make dragon-shot  $(NC) Renderiza PNGs de inspeção (Chrome headless) em /tmp/shenlong-shots"
+	@echo "$(YELLOW)  make icon         $(NC) Renderiza o ícone/adaptive-icon a partir do modelo 3D"
+	@echo "$(YELLOW)  make voice-setup  $(NC) Instala voz + reconhecimento de fala locais e grátis (Piper + Whisper)"
 	@echo "$(YELLOW)  make gen-voice    $(NC) Regera as frases fixas de Shenlong com a voz de dragão"
 	@echo "$(YELLOW)  make gen-sfx      $(NC) Regenera os efeitos sonoros sintetizados"
 	@echo "$(YELLOW)  make test         $(NC) Testes (mobile + server)  | make typecheck: tsc nos dois"
@@ -77,22 +79,21 @@ mobile-tunnel: ## Expo via túnel (redes restritas; o backend precisa de EXPO_PU
 
 UV := $(shell command -v uv 2>/dev/null || echo $(HOME)/.local/bin/uv)
 VOICE_DIR := tools/voice
-voice-setup: ## Voz local grátis: Piper (pt-BR masculina) num venv isolado + modelo
+voice-setup: ## Voz e reconhecimento de fala locais e grátis (Piper + Whisper) num venv isolado
 	@test -x "$(UV)" || { echo "$(RED)❌ precisa do uv (https://docs.astral.sh/uv/)$(NC)"; exit 1; }
-	@test -x $(VOICE_DIR)/.venv/bin/piper || { $(UV) venv -q --python 3.12 $(VOICE_DIR)/.venv && $(UV) pip install -q --python $(VOICE_DIR)/.venv/bin/python piper-tts; }
+	@test -x $(VOICE_DIR)/.venv/bin/python || $(UV) venv -q --python 3.12 $(VOICE_DIR)/.venv
+	@$(UV) pip install -q --python $(VOICE_DIR)/.venv/bin/python piper-tts faster-whisper
 	@test -f $(VOICE_DIR)/models/pt_BR-faber-medium.onnx || (cd $(VOICE_DIR) && mkdir -p models && cd models && ../.venv/bin/python -m piper.download_voices pt_BR-faber-medium)
+	@echo "$(BLUE)⬇️  modelo de reconhecimento de fala (Whisper base, ~150 MB, só na 1ª vez)$(NC)"
+	@cd $(VOICE_DIR) && .venv/bin/python -c "from faster_whisper import WhisperModel; WhisperModel('base', device='cpu', compute_type='int8', download_root='models/whisper')" 2>/dev/null
 	@command -v ffmpeg >/dev/null || echo "$(YELLOW)⚠️  instale o ffmpeg (sudo apt install ffmpeg) para o efeito de voz de dragão$(NC)"
 	@echo "$(GREEN)✓ voz local pronta$(NC)"
 
 check-keys:
-	@if ! grep -qE '^OPENAI_API_KEY=.+' server/.env 2>/dev/null && ! grep -qE '^ANTHROPIC_API_KEY=.+' server/.env 2>/dev/null; then \
-	  echo ""; echo "$(RED)══════════════════════════════════════════════════════════════════$(NC)"; \
-	  echo "$(RED)  ⚠️  server/.env SEM CHAVE: Shenlong aparece e fala, mas NÃO entende$(NC)"; \
-	  echo "$(RED)     o que você diz nem conversa. Preencha OPENAI_API_KEY (uma chave$(NC)"; \
-	  echo "$(RED)     cobre ouvir, voz e conversa) e rode make up de novo.$(NC)"; \
-	  echo "$(RED)══════════════════════════════════════════════════════════════════$(NC)"; echo ""; \
-	elif ! grep -qE '^OPENAI_API_KEY=.+' server/.env; then \
-	  echo "$(YELLOW)⚠️  sem OPENAI_API_KEY: sem reconhecimento de fala (STT). Só a invocação por voz alta funciona.$(NC)"; \
+	@test -x $(VOICE_DIR)/.venv/bin/python || { echo "$(YELLOW)⚠️  voz/reconhecimento locais não instalados: rode make voice-setup$(NC)"; }
+	@if ! grep -qE '^(OPENAI|ANTHROPIC)_API_KEY=.+' server/.env 2>/dev/null; then \
+	  echo "$(BLUE)ℹ️  Sem chave de API: ouvir e voz rodam grátis no computador; a conversa é por regras.$(NC)"; \
+	  echo "$(BLUE)   Para a conversa com IA de verdade, preencha OPENAI_API_KEY em server/.env.$(NC)"; \
 	fi
 
 up: setup-env check-keys ## Backend + Expo juntos
@@ -144,20 +145,28 @@ mobile-build-android: mobile-eas-auth-check ## Build Android
 mobile-build-all: mobile-eas-auth-check ## Build iOS + Android
 	@cd mobile && npx --no-install eas build --platform all --profile $(EAS_PROFILE)
 
-# ───────── arte (estilo anime, vetorial) ─────────
-ART := /tmp/shenlong-art
-CHROME_SHOT = google-chrome --headless=new --user-data-dir="$$(mktemp -d)" --hide-scrollbars
+# ───────── Shenlong 3D ─────────
+dragon-build: ## Regera o GLB do Shenlong a partir da escultura SDF
+	@node tools/dragon/build.mjs
 
-art-preview: ## Prévia da cabeça (mesmas camadas que o app desenha com Skia)
-	@mkdir -p $(ART)
-	@server/node_modules/.bin/tsx tools/art/preview.ts $(ART)/head.svg 0.3 >/dev/null
-	@$(CHROME_SHOT) --window-size=1000,1000 --screenshot=$(ART)/head.png "file://$(ART)/head.svg" >/dev/null 2>&1
-	@echo "$(GREEN)✓ $(ART)/head.png$(NC)"
+dragon-viewer: ## Viewer 3D no navegador (mesmo código da cena do app)
+	@tools/viewer/build.sh
+	@echo "$(GREEN)🐉 http://localhost:8099/tools/viewer/index.html#anim=1  (Ctrl+C para sair)$(NC)"
+	@python3 -m http.server 8099 --bind 127.0.0.1
 
-icon: ## Ícone e ícone adaptativo (Android) a partir da arte
-	@mkdir -p $(ART)
-	@server/node_modules/.bin/tsx tools/art/icon.ts $(ART)/icon.svg 0 >/dev/null
-	@server/node_modules/.bin/tsx tools/art/icon.ts $(ART)/adaptive.svg 0.22 >/dev/null
-	@$(CHROME_SHOT) --window-size=1024,1024 --screenshot=mobile/assets/icon.png "file://$(ART)/icon.svg" >/dev/null 2>&1
-	@$(CHROME_SHOT) --window-size=1024,1024 --screenshot=mobile/assets/adaptive-icon.png "file://$(ART)/adaptive.svg" >/dev/null 2>&1
-	@echo "$(GREEN)✓ mobile/assets/icon.png e adaptive-icon.png$(NC)"
+SHOTS ?= /tmp/shenlong-shots
+dragon-shot: ## PNGs de inspeção: pose final, aparição, rosto
+	@tools/viewer/build.sh && mkdir -p $(SHOTS)
+	@(python3 -m http.server 8099 --bind 127.0.0.1 >/dev/null 2>&1 & echo $$! > $(SHOTS)/.srv); sleep 1; \
+	  for a in 0.2 0.5 0.8 1; do tools/viewer/shoot.sh $(SHOTS)/appear_$$a.png "appear=$$a&t=9000" 430x932 >/dev/null; done; \
+	  tools/viewer/shoot.sh $(SHOTS)/face.png "appear=1&t=8000&yaw=-35&pitch=5&dist=6" 600x600 >/dev/null; \
+	  kill $$(cat $(SHOTS)/.srv); echo "$(GREEN)✓ $(SHOTS)$(NC)"
+
+icon: ## Ícone 1024 + adaptive icon renderizados do modelo 3D
+	@tools/viewer/build.sh && mkdir -p $(SHOTS)
+	@(python3 -m http.server 8099 --bind 127.0.0.1 >/dev/null 2>&1 & echo $$! > $(SHOTS)/.srv); sleep 1; \
+	  tools/viewer/shoot.sh $(SHOTS)/icon_raw.png "appear=1&t=8000&speak=0.38&wish=0.25&yaw=-38&pitch=-14&dist=6.0&icon=1&bx=-0.6&by=-0.75&bs=0.34" 1024x1024 >/dev/null; \
+	  tools/viewer/shoot.sh $(SHOTS)/adaptive_raw.png "appear=1&t=8000&speak=0.38&wish=0.25&yaw=-38&pitch=-14&dist=8.6&icon=1&bx=-0.45&by=-0.55&bs=0.26" 1024x1024 >/dev/null; \
+	  kill $$(cat $(SHOTS)/.srv); \
+	  python3 tools/viewer/finish_icon.py $(SHOTS)/icon_raw.png mobile/assets/icon.png && \
+	  python3 tools/viewer/finish_icon.py $(SHOTS)/adaptive_raw.png mobile/assets/adaptive-icon.png && echo "$(GREEN)✓ ícones atualizados$(NC)"

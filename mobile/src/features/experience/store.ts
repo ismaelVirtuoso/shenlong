@@ -34,6 +34,9 @@ interface Store {
   backend: BackendStatus;
   /** última transcrição (painel de diagnóstico em dev) */
   lastHeard: string;
+  /** diagnóstico do microfone em dev: dBFS e estado */
+  micDb: number;
+  voiceState: string;
   set: (p: Partial<Omit<Store, 'set'>>) => void;
   bump: (k: keyof Fx, extra?: Partial<Fx>) => void;
 }
@@ -46,6 +49,8 @@ export const useStore = create<Store>((set) => ({
   quality: defaultQuality(),
   backend: UNKNOWN,
   lastHeard: '',
+  micDb: -160,
+  voiceState: 'parado',
   fx: { bolt: 0, boltBig: false, wish: 0, heard: 0, missed: 0, poke: 0 },
   set: (p) => set(p),
   bump: (k, extra) => set((s) => ({ fx: { ...s.fx, ...extra, [k]: (s.fx[k] as number) + 1 } })),

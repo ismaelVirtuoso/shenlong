@@ -34,6 +34,7 @@ class Controller {
   private goodbyeFixed = true;
   private processing = false;
   private started = false;
+  private hudAt = 0;
 
   private get m(): MachineState {
     return useStore.getState().m;
@@ -230,10 +231,18 @@ class Controller {
     if (st.micDenied && mode === 'invocation') return; // só toque longo
     const myTurn = this.turn;
     void this.voice?.start({
-      onLevel: (l) => {
+      onLevel: (l, db) => {
         micLevel.value = l;
+        if (__DEV__) {
+          const now = Date.now();
+          if (now - this.hudAt > 300) {
+            this.hudAt = now;
+            useStore.getState().set({ micDb: Math.round(db) });
+          }
+        }
       },
       onSpeechStart: () => {
+        if (__DEV__) useStore.getState().set({ voiceState: 'fala detectada' });
         if (mode === 'invocation') {
           useStore.getState().bump('heard'); // esferas acendem NA HORA, antes do STT
           hap.select();
@@ -251,7 +260,10 @@ class Controller {
   private async onClip(mode: 'invocation' | 'conversation', clip: ClipInfo) {
     if (this.processing) return;
     const phaseAtStart = this.m.phase;
-    if (__DEV__) console.log(`[voz] fala de ${clip.voiceMs} ms, pico ${clip.peak.toFixed(2)}`);
+    if (__DEV__) {
+      console.log(`[voz] fala de ${clip.voiceMs} ms, pico ${clip.peak.toFixed(2)}`);
+      useStore.getState().set({ voiceState: `fala ${clip.voiceMs} ms → reconhecendo…` });
+    }
     const offline = async () => {
       if (mode === 'invocation') {
         // sem STT (sem chave/sem rede): qualquer fala clara de ~0,5–5 s invoca — a criança sempre consegue
@@ -275,7 +287,10 @@ class Controller {
       if (e instanceof SttUnavailable) await offline();
       return;
     }
-    if (__DEV__) console.log(`[stt] "${text}"`);
+    if (__DEV__) {
+      console.log(`[stt] "${text}"`);
+      useStore.getState().set({ voiceState: 'ouvindo' });
+    }
     useStore.getState().set({ lastHeard: text });
     if (this.m.phase !== phaseAtStart) return;
     if (looksLikeHallucination(text, clip.voiceMs)) {

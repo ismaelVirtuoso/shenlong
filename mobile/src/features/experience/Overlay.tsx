@@ -47,6 +47,10 @@ export function Overlay() {
 function DevHud({ top }: { top: number }) {
   const b = useStore((s) => s.backend);
   const heard = useStore((s) => s.lastHeard);
+  const micDb = useStore((s) => s.micDb);
+  const voiceState = useStore((s) => s.voiceState);
+  const phase = useStore((s) => s.m.phase);
+  const micOn = phase === 'altar' || phase === 'listening';
   const ok = (v: boolean) => (v ? '✓' : '✗');
   const line = b.reachable
     ? `servidor ✓ · ouvir ${ok(b.stt)} · voz ${b.tts ? b.ttsEngine ?? '✓' : '✗'} · conversa ${ok(b.llm)}`
@@ -55,6 +59,7 @@ function DevHud({ top }: { top: number }) {
     <View style={[styles.hud, { top: top + 2 }]}>
       <Text style={styles.hudText}>{line}</Text>
       {b.reachable && (!b.stt || !b.llm) && <Text style={styles.hudWarn}>sem OPENAI_API_KEY em server/.env: ele não entende nem conversa</Text>}
+      {micOn && <Text style={styles.hudText}>microfone {micDb > -159 ? `${micDb} dB` : 'sem sinal'} · {voiceState}</Text>}
       {!!heard && <Text style={styles.hudText}>ouvi: “{heard}”</Text>}
     </View>
   );

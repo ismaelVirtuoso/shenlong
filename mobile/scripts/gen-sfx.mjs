@@ -35,16 +35,20 @@ function write(name, x, gain = 0.9) {
   console.log(name, (pcm.length / 1024).toFixed(0) + 'KB');
 }
 
-// drone ambiente (loop de 8 s: todas as frequências têm ciclos inteiros)
+// drone ambiente (loop de 8 s, sem ruído — o "vento" soava como chiado no alto-falante do celular):
+// acorde grave e místico com leve batimento; todas as frequências têm ciclos inteiros no loop
 {
   const n = 8 * SR, x = new Float32Array(n);
-  const wind = lowpass(noise(8), 400);
   for (let i = 0; i < n; i++) {
     const t = i / SR;
-    const swell = 0.7 + 0.3 * Math.sin(TAU * t / 8);
-    x[i] = swell * (0.5 * Math.sin(TAU * 55 * t) + 0.3 * Math.sin(TAU * 82.5 * t + 1) + 0.2 * Math.sin(TAU * 110.25 * t)) + 0.9 * wind[i];
+    const swell = 0.85 + 0.15 * Math.sin(TAU * t / 8);
+    x[i] = swell * (
+      0.42 * Math.sin(TAU * 55 * t) + 0.28 * Math.sin(TAU * 55.25 * t) +
+      0.22 * Math.sin(TAU * 82.5 * t + 1) + 0.12 * Math.sin(TAU * 110 * t) +
+      0.06 * Math.sin(TAU * 165 * t + 2) * (0.5 + 0.5 * Math.sin(TAU * t / 4))
+    );
   }
-  write('drone', x, 0.6);
+  write('drone', x, 0.5);
 }
 // rumble de invocação (loop 4 s)
 {

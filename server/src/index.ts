@@ -2,10 +2,11 @@ import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { config } from './config.js';
-import { llmAvailable, streamReply, type Turn } from './providers/llm.js';
-import { sttAvailable, transcribe } from './providers/stt.js';
+import { llmAvailable, llmEngine, streamReply, type Turn } from './providers/llm.js';
+import { sttAvailable, sttEngine, transcribe } from './providers/stt.js';
 import { synthesize, ttsAvailable, ttsEngine } from './providers/tts.js';
 import { warmPiper } from './voice/piper.js';
+import { warmWhisper } from './voice/whisper.js';
 import { REDIRECT_INPUT, SAFE_OUTPUT, isUnsafe } from './safety.js';
 import { SentenceStream } from './sentences.js';
 
@@ -27,7 +28,7 @@ app.use('/api/*', async (c, next) => {
 });
 
 app.get('/health', (c) =>
-  c.json({ ok: true, mock: config.mock, stt: sttAvailable(), tts: ttsAvailable(), ttsEngine: ttsEngine(), llm: llmAvailable(), llmProvider: config.llmProvider }),
+  c.json({ ok: true, mock: config.mock, stt: sttAvailable(), sttEngine: sttEngine(), tts: ttsAvailable(), ttsEngine: ttsEngine(), llm: llmAvailable(), llmEngine: llmEngine() }),
 );
 
 app.post('/api/stt', async (c) => {
@@ -110,11 +111,12 @@ app.post('/api/chat', async (c) => {
 });
 
 if (ttsEngine() === 'piper') warmPiper();
+if (sttEngine() === 'local') warmWhisper();
 
 serve({ fetch: app.fetch, port: config.port, hostname: '0.0.0.0' }, (i) => {
-  console.log(`🐉 Shenlong server :${i.port}  ouvir(STT)=${sttAvailable()}  voz(TTS)=${ttsEngine() ?? 'nenhuma'}  conversa(IA)=${llmAvailable() ? config.llmProvider : 'não'}`);
-  if (!config.mock && (!sttAvailable() || !llmAvailable())) {
-    console.log('\n⚠️  SEM CHAVE DE API: Shenlong não consegue ouvir nem conversar.');
-    console.log('   Preencha OPENAI_API_KEY em server/.env (uma chave cobre ouvir, voz e conversa) e reinicie.\n');
+  console.log(`🐉 Shenlong server :${i.port}  ouvir=${sttEngine() ?? 'NÃO'}  voz=${ttsEngine() ?? 'aparelho'}  conversa=${llmEngine()}`);
+  if (llmEngine() === 'offline') {
+    console.log('   (sem chave: ouvir/voz locais e grátis; conversa por regras. Para a IA de verdade, preencha OPENAI_API_KEY em server/.env)');
   }
+  if (!sttAvailable()) console.log('⚠️  Sem reconhecimento de fala: rode `make voice-setup` (grátis) ou preencha OPENAI_API_KEY.');
 });

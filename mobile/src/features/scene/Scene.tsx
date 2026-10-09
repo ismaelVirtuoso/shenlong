@@ -5,9 +5,6 @@ import { useDerivedValue } from 'react-native-reanimated';
 import { PROFILES } from '@/core/quality';
 import { Altar, Balls } from './Balls';
 import { Bolt, Embers, Pillar, Vignette, WishWave } from './Energy';
-import { AnimeDragon } from './AnimeDragon';
-import { Backdrop } from './Backdrop';
-import { Foreground } from './Foreground';
 import { useSceneValues } from './drive';
 import { useSceneStore } from './bridge';
 import type { Layout } from './types';
@@ -43,11 +40,8 @@ export function Scene() {
   return (
     <Canvas ref={ref} style={{ position: 'absolute', top: 0, left: 0, width: W, height: H }}>
       <Group transform={shake}>
-        <Backdrop S={S} L={L} />
         {showAltar && <Altar S={S} L={L} />}
         {showPillar && <Pillar S={S} L={L} />}
-        <AnimeDragon S={S} L={L} />
-        <Foreground S={S} L={L} />
         <Embers S={S} L={L} />
         {wave && <WishWave S={S} L={L} />}
         <Balls S={S} L={L} />

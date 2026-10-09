@@ -16,6 +16,8 @@ export const config = {
   sttModel: env.STT_MODEL ?? 'gpt-4o-mini-transcribe',
   ttsModel: env.TTS_MODEL ?? 'gpt-4o-mini-tts',
   ttsVoice: env.TTS_VOICE ?? 'onyx',
+  /** reconhecimento local sem chave: base (~1 s) | small (mais preciso, ~3 s) */
+  localSttModel: env.LOCAL_STT_MODEL ?? 'base',
   /** auto = OpenAI se houver chave, senão Piper local (grátis) */
   ttsProvider: (env.TTS_PROVIDER ?? 'auto') as 'auto' | 'openai' | 'piper',
   piperBin: env.PIPER_BIN ?? resolve(ROOT, 'tools/voice/.venv/bin/piper'),

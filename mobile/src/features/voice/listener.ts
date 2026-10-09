@@ -1,4 +1,6 @@
+import { Platform } from 'react-native';
 import { requestRecordingPermissionsAsync, setAudioModeAsync, type AudioRecorder } from 'expo-audio';
+import { File, Paths } from 'expo-file-system';
 
 export interface ClipInfo {
   uri: string;
@@ -9,7 +11,8 @@ export interface ClipInfo {
 }
 
 export interface ListenHandlers {
-  onLevel: (level: number) => void;
+  /** nível 0..1 e dBFS bruto (diagnóstico) */
+  onLevel: (level: number, db: number) => void;
   onSpeechStart: () => void;
   onClip: (clip: ClipInfo) => void;
 }
@@ -17,7 +20,12 @@ export interface ListenHandlers {
 const TICK = 60;
 const END_SILENCE = 700;
 const MAX_SPEECH = 6500;
-const ROTATE_IDLE = 4000;
+/**
+ * Reabrir o gravador reconfigura a sessão de áudio do iOS (setCategory/setActive): estala o som
+ * (o "chiado" a cada poucos segundos) e engasga a animação. Então só reabrimos após uma fala ou
+ * a cada 25 s de silêncio (para o arquivo não crescer à toa — 25 s a 32 kbps ≈ 100 KB).
+ */
+const ROTATE_IDLE = 25000;
 const MIN_VOICE_DB = -46;
 
 const toLevel = (db: number) => Math.min(1, Math.max(0, (db + 55) / 40));
@@ -55,7 +63,7 @@ export class VoiceListener {
 
   async stop() {
     this.active = false;
-    this.h?.onLevel(0);
+    this.h?.onLevel(0, -160);
     this.h = null;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
@@ -94,7 +102,7 @@ export class VoiceListener {
       const db = this.recorder.getStatus().metering ?? -160;
       const level = toLevel(db);
       smooth += (level - smooth) * 0.5;
-      this.h.onLevel(smooth);
+      this.h.onLevel(smooth, db);
       peak = Math.max(peak, level);
 
       const isVoice = db > Math.max(floor + 8, MIN_VOICE_DB);
@@ -127,6 +135,18 @@ export class VoiceListener {
       await this.recorder.stop();
       uri = this.recorder.uri;
     } catch {}
+    // O gravador reutiliza o MESMO arquivo a cada segmento: move a fala para um nome único
+    // antes de reabrir a gravação (senão o envio ao STT lia um arquivo sendo regravado/apagado).
+    if (send && uri && Platform.OS !== 'web') {
+      try {
+        const src = new File(uri);
+        const dst = new File(Paths.cache, `fala-${Date.now()}.m4a`);
+        await src.move(dst);
+        uri = dst.uri;
+      } catch {
+        send = false;
+      }
+    }
     if (this.active) void this.segment(); // reabre já (não perde o começo da próxima fala)
     if (send && uri && h) h.onClip({ uri, voiceMs, peak });
   }

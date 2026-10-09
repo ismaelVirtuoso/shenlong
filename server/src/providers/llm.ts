@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import { config } from '../config.js';
 import { systemPrompt } from '../persona.js';
+import { offlineReply } from './offline.js';
 
 export interface Turn {
   role: 'user' | 'assistant';
@@ -20,9 +21,14 @@ let openai: OpenAI | undefined;
 const getAnthropic = () => (anthropic ??= new Anthropic({ apiKey: config.anthropicKey }));
 export const getOpenAI = () => (openai ??= new OpenAI({ apiKey: config.openaiKey }));
 
-export const llmAvailable = () =>
-  config.mock ||
-  (config.llmProvider === 'anthropic' ? !!config.anthropicKey : !!config.openaiKey);
+/** IA paga se houver chave; senão o Shenlong por regras (sempre disponível). */
+export const llmEngine = (): 'mock' | 'anthropic' | 'openai' | 'offline' =>
+  config.mock ? 'mock'
+    : config.llmProvider === 'anthropic' && config.anthropicKey ? 'anthropic'
+    : config.openaiKey ? 'openai'
+    : config.anthropicKey ? 'anthropic'
+    : 'offline';
+export const llmAvailable = () => true;
 
 /** Stream de deltas de texto da resposta de Shenlong. */
 export async function* streamReply(history: Turn[], wishes: number): AsyncGenerator<string> {
@@ -34,8 +40,14 @@ export async function* streamReply(history: Turn[], wishes: number): AsyncGenera
     }
     return;
   }
+  const engine = llmEngine();
+  if (engine === 'offline') {
+    const text = offlineReply(history, wishes, config.maxWishes);
+    for (const w of text.split(/(?<= )/)) yield w;
+    return;
+  }
   const system = systemPrompt(wishes);
-  if (config.llmProvider === 'openai') {
+  if (engine === 'openai') {
     const stream = await getOpenAI().chat.completions.create({
       model: config.openaiChatModel,
       stream: true,
