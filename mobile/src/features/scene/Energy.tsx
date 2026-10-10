@@ -1,7 +1,10 @@
 import { useMemo } from 'react';
 import { BlurMask, Circle, Fill, Group, LinearGradient, Oval, Path, Points, RadialGradient, Rect, Skia, vec } from '@shopify/react-native-skia';
 import { useDerivedValue } from 'react-native-reanimated';
+import { RELEASE } from './bridge';
 import { clamp, rand, smooth } from './math';
+import { tailAnchor } from './anchor';
+import { launchPoint, launchU, releaseCenter } from './release';
 import type { Layout, SceneValues } from './types';
 
 const TAU = Math.PI * 2;
@@ -12,8 +15,10 @@ const pillar = (S: SceneValues) => {
   return smooth(0.3, 0.92, S.summon.value) * (1 - smooth(0.15, 0.85, S.appear.value));
 };
 
+/** O pilar nasce das esferas unidas (onde o dragão vai surgir, ver anchor.ts). */
 export function Pillar({ S, L }: { S: SceneValues; L: Layout }) {
-  const { W, H, cx, altarY } = L;
+  const { W, H, cx } = L;
+  const baseY = useDerivedValue(() => tailAnchor.value.y * H);
 
   // ── pilar ──
   const pillarW = useDerivedValue(() => W * (0.05 + 0.2 * pillar(S)));
@@ -32,7 +37,7 @@ export function Pillar({ S, L }: { S: SceneValues; L: Layout }) {
     for (let s = 0; s < STRANDS; s++) {
       for (let k = 0; k < PER; k++) {
         const u = k / (PER - 1);
-        const y = altarY - u * (altarY - H * 0.04);
+        const y = baseY.value - u * (baseY.value - H * 0.04);
         const a = u * 9 + t * 3.2 + (s * TAU) / STRANDS;
         pts.push({ x: cx + Math.sin(a) * amp * (0.35 + 0.65 * Math.sin(u * Math.PI)), y });
       }
@@ -46,19 +51,21 @@ export function Pillar({ S, L }: { S: SceneValues; L: Layout }) {
     useDerivedValue(() => {
       const p = (S.clock.value / 2200 + k / 3) % 1;
       const rw = W * (0.1 + 0.55 * p);
-      return { x: cx - rw, y: altarY - rw * 0.2 - p * H * 0.18, w: rw * 2, h: rw * 0.4, a: (1 - p) * clamp(S.summon.value * 1.4, 0, 1) * (1 - smooth(0.1, 0.6, S.appear.value)) };
+      return { x: cx - rw, y: baseY.value - rw * 0.2 - p * H * 0.18, w: rw * 2, h: rw * 0.4, a: (1 - p) * clamp(S.summon.value * 1.4, 0, 1) * (1 - smooth(0.1, 0.6, S.appear.value)) };
     });
   const r0 = ring(0), r1 = ring(1), r2 = ring(2);
+  const pillarH = useDerivedValue(() => baseY.value + 20);
+  const coreH = useDerivedValue(() => baseY.value + 10);
 
   return (
     <>
       {/* brilho de chão sob o pilar */}
       <Group opacity={pillarOpacity}>
-        <Rect x={pillarX} y={0} width={pillarW} height={altarY + 20}>
+        <Rect x={pillarX} y={0} width={pillarW} height={pillarH}>
           <LinearGradient start={vec(cx - W * 0.12, 0)} end={vec(cx + W * 0.12, 0)} colors={['rgba(255,200,80,0)', 'rgba(255,225,120,0.8)', 'rgba(255,255,235,0.95)', 'rgba(255,225,120,0.8)', 'rgba(255,200,80,0)']} />
           {L.q.blur && <BlurMask blur={18} style="normal" />}
         </Rect>
-        <Rect x={coreX} y={0} width={coreW} height={altarY + 10} color="rgba(255,255,255,0.95)">
+        <Rect x={coreX} y={0} width={coreW} height={coreH} color="rgba(255,255,255,0.95)">
           {L.q.blur && <BlurMask blur={6} style="normal" />}
         </Rect>
       </Group>
@@ -180,6 +187,121 @@ export function Bolt({ S, L }: { S: SceneValues; L: Layout }) {
       </Group>
       <Fill color={flashColor} />
     </>
+  );
+}
+
+/**
+ * Saída após o desejo (montada só nela): aura dourada enquanto o dragão vira ouro, clarão quando
+ * ele vira as esferas, o brilho único da fusão e um rastro de luz para cada esfera lançada.
+ */
+export function Release({ S, L }: { S: SceneValues; L: Layout }) {
+  const { W, H } = L;
+  const c = releaseCenter(L);
+  const aura = useDerivedValue(() => {
+    const f = S.release.value;
+    return smooth(0, RELEASE.gold, f) * (1 - smooth(RELEASE.burst, RELEASE.burst + 0.08, f));
+  });
+  const auraColors = useDerivedValue(() => [`rgba(255,200,80,${(0.45 * aura.value).toFixed(3)})`, 'rgba(255,150,30,0)']);
+  const flashColor = useDerivedValue(() => {
+    const f = S.release.value;
+    const k = smooth(RELEASE.burst - 0.05, RELEASE.burst, f) * (1 - smooth(RELEASE.burst, RELEASE.burst + 0.1, f));
+    return `rgba(255,236,170,${(0.92 * k).toFixed(3)})`;
+  });
+  // o brilho único: nasce quando as esferas se fundem e pulsa antes de lançá-las
+  const orb = useDerivedValue(() => {
+    const f = S.release.value;
+    return smooth(RELEASE.merge, RELEASE.launch - 0.02, f) * (1 - smooth(RELEASE.launch + 0.02, RELEASE.launch + 0.12, f));
+  });
+  const orbR = useDerivedValue(() => W * (0.06 + 0.26 * orb.value) * (1 + 0.08 * Math.sin(S.clock.value / 70)));
+  const orbColors = useDerivedValue(() => {
+    const a = orb.value;
+    return [`rgba(255,255,240,${a.toFixed(3)})`, `rgba(255,214,90,${(0.85 * a).toFixed(3)})`, 'rgba(255,140,20,0)'];
+  });
+  return (
+    <>
+      <Circle cx={c.x} cy={c.y} r={H * 0.5}>
+        <RadialGradient c={vec(c.x, c.y)} r={H * 0.5} colors={auraColors} />
+      </Circle>
+      {[0, 1, 2, 3, 4, 5, 6].map((i) => (
+        <Trail key={i} i={i} S={S} L={L} />
+      ))}
+      <Circle cx={c.x} cy={c.y} r={orbR}>
+        <RadialGradient c={vec(c.x, c.y)} r={orbR} colors={orbColors} positions={[0, 0.35, 1]} />
+      </Circle>
+      <Fill color={flashColor} />
+    </>
+  );
+}
+
+/**
+ * Brilho dourado intenso das sete esferas unidas na ponta da cauda: acende quando elas se juntam
+ * na invocação e some quando são absorvidas na saída dourada.
+ */
+export function TailGlow({ S, L }: { S: SceneValues; L: Layout }) {
+  const { W, H } = L;
+  const k = useDerivedValue(() => {
+    const pulse = 0.88 + 0.12 * Math.sin(S.clock.value / 260) + 0.25 * S.wish.value;
+    return smooth(0.8, 1, S.summon.value) * (1 - smooth(0.04, RELEASE.burst, S.release.value)) * pulse;
+  });
+  const c = useDerivedValue(() => vec(tailAnchor.value.x * W, tailAnchor.value.y * H));
+  const haloR = useDerivedValue(() => W * (0.4 + 0.05 * k.value));
+  const haloColors = useDerivedValue(() => {
+    const a = clamp(k.value, 0, 1.2);
+    return [`rgba(255,244,200,${(0.95 * a).toFixed(3)})`, `rgba(255,200,70,${(0.7 * a).toFixed(3)})`, `rgba(255,150,30,${(0.28 * a).toFixed(3)})`, 'rgba(255,120,0,0)'];
+  });
+  const coreColors = useDerivedValue(() => {
+    const a = clamp(k.value, 0, 1);
+    return [`rgba(255,255,245,${(0.95 * a).toFixed(3)})`, `rgba(255,230,140,${(0.6 * a).toFixed(3)})`, 'rgba(255,200,80,0)'];
+  });
+  const flareW = useDerivedValue(() => W * (0.55 + 0.1 * k.value));
+  const flareX = useDerivedValue(() => tailAnchor.value.x * W - flareW.value / 2);
+  const flareY = useDerivedValue(() => tailAnchor.value.y * H - 3);
+  const flareOpacity = useDerivedValue(() => 0.85 * clamp(k.value, 0, 1));
+  return (
+    <>
+      <Group blendMode="plus">
+        <Circle c={c} r={haloR}>
+          <RadialGradient c={c} r={haloR} colors={haloColors} positions={[0, 0.14, 0.42, 1]} />
+        </Circle>
+        <Circle c={c} r={W * 0.15}>
+          <RadialGradient c={c} r={W * 0.15} colors={coreColors} />
+        </Circle>
+        <Oval x={flareX} y={flareY} width={flareW} height={6} color="rgba(255,236,170,1)" opacity={flareOpacity}>
+          {L.q.blur && <BlurMask blur={4} style="normal" />}
+        </Oval>
+      </Group>
+    </>
+  );
+}
+
+const TRAIL_SAMPLES = 14;
+/** Rastro de luz da esfera i: arco do centro até onde ela está, afinando e sumindo na cauda. */
+function Trail({ i, S, L }: { i: number; S: SceneValues; L: Layout }) {
+  const path = useDerivedValue(() => {
+    const p = Skia.PathBuilder.Make();
+    const f = S.release.value;
+    const u = launchU(i, f);
+    if (u <= 0) return p.build();
+    const u0 = Math.max(0, u - 0.4);
+    for (let k = 0; k <= TRAIL_SAMPLES; k++) {
+      const q = launchPoint(i, u0 + ((u - u0) * k) / TRAIL_SAMPLES, S.seed.value, L);
+      if (k) p.lineTo(q.x, q.y);
+      else p.moveTo(q.x, q.y);
+    }
+    return p.build();
+  });
+  const opacity = useDerivedValue(() => {
+    const u = launchU(i, S.release.value);
+    return u > 0 ? 1 - smooth(0.75, 1, u) : 0;
+  });
+  return (
+    <Group opacity={opacity}>
+      <Path path={path} style="stroke" strokeWidth={16} strokeCap="round" color="rgba(255,170,40,0.35)">
+        {L.q.blur && <BlurMask blur={8} style="normal" />}
+      </Path>
+      <Path path={path} style="stroke" strokeWidth={5} strokeCap="round" color="rgba(255,226,130,0.95)" />
+      <Path path={path} style="stroke" strokeWidth={1.6} strokeCap="round" color="#fffbe8" />
+    </Group>
   );
 }
 

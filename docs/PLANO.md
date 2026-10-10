@@ -46,7 +46,7 @@ Linha do tempo (tempos aproximados desde o INVOKED):
 | 2.5–4.5 s | **Summoning II**: esferas colapsam em pilar de luz; hélices douradas giram; 1º relâmpago; tela estoura em branco | trovão + impacto | `Heavy` |
 | 4.5–8.5 s | **Appearing**: o corpo do dragão sobe pelo pilar, a cabeça emerge e se vira para a câmera; nuvens se abrem; céu muda p/ verde-dourado | rugido sintetizado + swell + trovões | pulsos acompanhando a subida |
 | 8.5 s | **Awake**: cabeça gigante olha para o usuário, olhos acendem em vermelho, aura pulsa; esferas viram pequeno anel orbitando embaixo | pico musical, depois silêncio respeitoso | `Success` |
-| 9 s | **Speaking** (frase fixa pré-gerada): "Eu sou Shenlong. Diga-me… qual é o seu desejo?" — mandíbula mexe pelo envelope da fala, olhos brilham mais, legenda em balão | voz | — |
+| 9 s | **Speaking** (frase fixa pré-gerada): "Eu sou Shenlong. Diga-me… qual é o seu desejo?" — mandíbula mexe pelo envelope da fala, olhos brilham mais; só áudio, sem legenda na tela | voz | — |
 | depois | **Listening**: dragão inclina a cabeça, olhos suavizam, aura azulada respira com a voz do usuário, orbe de mic embaixo | "ping" suave | `Selection` |
 | fim da fala | **Thinking**: olhos estreitam, orbe de energia gira na boca, nuvens se agitam levemente; *se a IA demorar >1.2 s*, Shenlong solta um "Hmmm…" pré-gerado (cobre latência) | zumbido grave | — |
 | resposta | **Speaking** frase a frase (streaming) | voz | — |

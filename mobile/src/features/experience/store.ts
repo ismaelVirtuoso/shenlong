@@ -4,12 +4,6 @@ import { initialState, type MachineState } from '@/core/machine';
 import { defaultQuality, type Quality } from '@/core/quality';
 import { UNKNOWN, type BackendStatus } from '../conversation/health';
 
-export interface Caption {
-  id: number;
-  who: 'shenlong' | 'user';
-  text: string;
-}
-
 export interface Fx {
   /** incrementa a cada relâmpago */
   bolt: number;
@@ -25,7 +19,6 @@ export interface Fx {
 
 interface Store {
   m: MachineState;
-  caption: Caption | null;
   /** áudio de Shenlong tocando agora (boca/olhos) */
   speaking: boolean;
   micDenied: boolean;
@@ -43,7 +36,6 @@ interface Store {
 
 export const useStore = create<Store>((set) => ({
   m: initialState,
-  caption: null,
   speaking: false,
   micDenied: false,
   quality: defaultQuality(),

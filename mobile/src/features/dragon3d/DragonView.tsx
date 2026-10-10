@@ -7,6 +7,7 @@ import type { QualityLevel } from './core/types';
 import { loadDragonAsset } from './loadAsset';
 import { DragonTimeline } from './timeline';
 import { useStore } from '../experience/store';
+import { tailAnchor } from '../scene/anchor';
 
 /** Log de desempenho: em dev, ou com EXPO_PUBLIC_PROFILE=1 (útil com --no-dev para medir o real). */
 const PROFILE = process.env.EXPO_PUBLIC_PROFILE === '1';
@@ -145,6 +146,8 @@ export function DragonView() {
       }
       const t0 = performance.now();
       scene.update(inp);
+      const a = tailAnchor.value;
+      if (Math.abs(a.x - scene.anchor.x) + Math.abs(a.y - scene.anchor.y) > 0.0008) tailAnchor.value = { x: scene.anchor.x, y: scene.anchor.y };
       const t1 = performance.now();
       scene.render();
       const t2 = performance.now();

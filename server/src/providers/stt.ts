@@ -1,13 +1,13 @@
 import { config } from '../config.js';
-import { getOpenAI } from './llm.js';
+import { geminiTranscribe } from './gemini.js';
 import { whisperAvailable, whisperTranscribe } from '../voice/whisper.js';
 
-export type SttEngine = 'openai' | 'local' | null;
+export type SttEngine = 'gemini' | 'local' | null;
 
-/** OpenAI se houver chave; senão Whisper local (grátis, roda no computador). */
+/** Gemini se houver chave; senão Whisper local (grátis, roda no computador). */
 export function sttEngine(): SttEngine {
   if (config.mock) return null;
-  if (config.openaiKey) return 'openai';
+  if (config.geminiKey) return 'gemini';
   return whisperAvailable() ? 'local' : null;
 }
 export const sttAvailable = () => sttEngine() !== null;
@@ -17,11 +17,5 @@ const PROMPT = 'Shenlong, apareça! Esferas do Dragão. Eu quero um desejo.';
 
 export async function transcribe(file: File): Promise<string> {
   if (sttEngine() === 'local') return whisperTranscribe(file);
-  const r = await getOpenAI().audio.transcriptions.create({
-    file,
-    model: config.sttModel,
-    language: 'pt',
-    prompt: PROMPT,
-  });
-  return r.text.trim();
+  return geminiTranscribe(file, PROMPT);
 }

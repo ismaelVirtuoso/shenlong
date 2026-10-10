@@ -23,6 +23,10 @@ export interface SceneValues {
   wish: SharedValue<number>;
   shake: SharedValue<number>;
   poke: SharedValue<number>;
+  /** sorteio dos destinos do lançamento das esferas na saída dourada (novo a cada aparição) */
+  seed: SharedValue<number>;
+  /** 0→1 saída após o desejo (ver RELEASE em timing.ts); 0 fora dela */
+  release: SharedValue<number>;
   /** nível do mic 0..1 */
   mic: SharedValue<number>;
 }

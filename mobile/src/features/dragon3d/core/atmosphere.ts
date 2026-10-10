@@ -86,7 +86,7 @@ export class Atmosphere {
       const front = i % 3 === 0;
       const base = new THREE.Vector3(
         (Math.random() - 0.5) * (front ? 9 : 26),
-        front ? -5.2 + Math.random() * 1.4 : -7 + Math.random() * 5,
+        front ? -8.2 + Math.random() * 1.4 : -9 + Math.random() * 5, // abaixo da cauda: o "8" fica inteiro à vista
         front ? 2 + Math.random() * 5 : -16 + Math.random() * 12,
       );
       const sc = front ? 5 + Math.random() * 4 : 7 + Math.random() * 8;
@@ -166,8 +166,8 @@ export class Atmosphere {
     this.group.add(rayMesh);
 
     // luzes
-    this.hemi = new THREE.HemisphereLight('#3f6a50', '#5a3a14', 0.5);
-    this.key = new THREE.DirectionalLight('#ffc070', 2.4); // luz dourada das esferas (de baixo/frente)
+    this.hemi = new THREE.HemisphereLight('#8fb89a', '#6a4a1c', 0.5);
+    this.key = new THREE.DirectionalLight('#ffe6b8', 2.4); // luz das esferas (de baixo/frente): quente, mas sem apagar o verde-limão
     this.key.position.set(2.5, -2.5, 9);
     this.rim = new THREE.DirectionalLight('#ffe0b0', 3.0); // contraluz do halo dourado: silhueta
     this.rim.position.set(-4, 7, -10);
@@ -209,10 +209,10 @@ export class Atmosphere {
     this.rayMat.opacity = 0.035 * inp.appear + 0.03 * inp.summon + 0.12 * inp.wish;
 
     // luz-chave dourada (as esferas lá embaixo) + clarão branco-azulado do relâmpago na luz de topo
-    this.key.intensity = 0.4 + 1.3 * inp.appear + 1.2 * inp.wish + 0.6 * inp.glow * (1 - inp.appear);
+    this.key.intensity = 0.4 + 1.6 * inp.appear + 1.2 * inp.wish + 0.6 * inp.glow * (1 - inp.appear);
     this.rim.intensity = 0.8 + 2.4 * inp.appear + 2 * inp.flash;
-    this.top.intensity = 0.4 + 0.8 * inp.appear + 6 * inp.flash;
-    this.hemi.intensity = 0.35 + 0.35 * inp.appear + 0.8 * inp.flash;
-    this.fog.density = 0.026 + 0.012 * (1 - inp.appear);
+    this.top.intensity = 0.4 + 1.1 * inp.appear + 6 * inp.flash;
+    this.hemi.intensity = 0.35 + 0.65 * inp.appear + 0.8 * inp.flash;
+    this.fog.density = 0.011 + 0.014 * (1 - inp.appear); // câmera a ~25: dragão nítido como no anime
   }
 }

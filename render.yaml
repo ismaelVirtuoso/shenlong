@@ -1,0 +1,21 @@
+# Backend do Shenlong no Render (plano free). Passo a passo: docs/DEPLOY.md
+services:
+  - type: web
+    name: shenlong-api
+    runtime: docker
+    plan: free
+    region: virginia
+    branch: main
+    dockerfilePath: ./server/Dockerfile
+    dockerContext: ./server
+    healthCheckPath: /health
+    buildFilter:
+      paths:
+        - server/**
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: TTS_PROVIDER
+        value: gemini
+      - key: VOICE_FX
+        value: dragon

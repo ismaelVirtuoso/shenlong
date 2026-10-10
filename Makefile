@@ -1,7 +1,7 @@
 .PHONY: dragon-build dragon-viewer dragon-shot icon voice-setup check-keys
 .PHONY: help install install-server install-mobile setup-env up up-mock server server-mock mobile mobile-clear mobile-tunnel \
-        gen-voice gen-sfx test typecheck lan-ip fix-inotify-watchers mobile-eas-auth-check \
-        mobile-build-ios mobile-build-android mobile-build-all
+        gen-voice gen-sfx test typecheck lan-ip voice-log fix-inotify-watchers mobile-eas-auth-check \
+        mobile-build-ios mobile-build-android mobile-build-all apk apk-install apk-clean
 
 GREEN=\033[0;32m
 YELLOW=\033[1;33m
@@ -25,6 +25,7 @@ help: ## Mostra esta ajuda
 	@echo "$(YELLOW)  make up-mock      $(NC) Igual, mas com backend de teste (sem chaves de API; voz do aparelho, invoque por toque longo)"
 	@echo "$(YELLOW)  make server       $(NC) Só o backend (porta 8787)       | make server-mock: sem chaves"
 	@echo "$(YELLOW)  make mobile       $(NC) Só o Expo (LAN)  | mobile-clear: cache limpo | mobile-tunnel: redes restritas"
+	@echo "$(YELLOW)  make voice-log    $(NC) Acompanha o diagnóstico da voz vindo do celular (com make up rodando)"
 	@echo "$(YELLOW)  make lan-ip       $(NC) Mostra o IP da LAN usado pelo celular"
 	@echo "$(YELLOW)  make fix-inotify-watchers$(NC) Linux: corrige ENOSPC do Metro"
 	@echo ""
@@ -38,13 +39,17 @@ help: ## Mostra esta ajuda
 	@echo "$(YELLOW)  make gen-sfx      $(NC) Regenera os efeitos sonoros sintetizados"
 	@echo "$(YELLOW)  make test         $(NC) Testes (mobile + server)  | make typecheck: tsc nos dois"
 	@echo ""
+	@echo "$(BLUE)📦 APK ANDROID (build local):$(NC)"
+	@echo "$(YELLOW)  make apk          $(NC) Gera mobile/build/shenlong.apk apontando para o backend em http://$(LAN_IP):8787 (API_URL=... para outro)"
+	@echo "$(YELLOW)  make apk-install  $(NC) Instala no celular via USB (adb)  | make apk-clean: apaga mobile/android"
+	@echo ""
 	@echo "$(BLUE)🏭 BUILD (EAS):$(NC)"
 	@echo "$(YELLOW)  make mobile-build-ios | mobile-build-android | mobile-build-all$(NC)  (ENV=preview|development|production, padrão preview)"
 	@echo ""
 
 # ───────── setup ─────────
 install: install-server install-mobile setup-env ## Instala tudo
-	@$(MAKE) --no-print-directory voice-setup || echo "$(YELLOW)⚠️  voz local não instalada (precisa de uv); Shenlong usa a voz da OpenAI ou a do aparelho$(NC)"
+	@$(MAKE) --no-print-directory voice-setup || echo "$(YELLOW)⚠️  voz local não instalada (precisa de uv); Shenlong usa a voz do Gemini ou a do aparelho$(NC)"
 
 install-server:
 	@cd server && npm install
@@ -54,7 +59,7 @@ install-mobile:
 
 setup-env: ## Cria server/.env a partir do exemplo
 	@if [ ! -f server/.env ]; then cp server/.env.example server/.env; \
-	  echo "$(YELLOW)⚠️  server/.env criado. Preencha OPENAI_API_KEY e ANTHROPIC_API_KEY (ou use make up-mock).$(NC)"; \
+	  echo "$(YELLOW)⚠️  server/.env criado. Preencha GEMINI_API_KEY (ou use make up-mock; sem chave tudo roda local).$(NC)"; \
 	else echo "$(GREEN)✓ server/.env já existe$(NC)"; fi
 
 lan-ip:
@@ -91,9 +96,9 @@ voice-setup: ## Voz e reconhecimento de fala locais e grátis (Piper + Whisper) 
 
 check-keys:
 	@test -x $(VOICE_DIR)/.venv/bin/python || { echo "$(YELLOW)⚠️  voz/reconhecimento locais não instalados: rode make voice-setup$(NC)"; }
-	@if ! grep -qE '^(OPENAI|ANTHROPIC)_API_KEY=.+' server/.env 2>/dev/null; then \
+	@if ! grep -qE '^GEMINI_API_KEY=.+' server/.env 2>/dev/null; then \
 	  echo "$(BLUE)ℹ️  Sem chave de API: ouvir e voz rodam grátis no computador; a conversa é por regras.$(NC)"; \
-	  echo "$(BLUE)   Para a conversa com IA de verdade, preencha OPENAI_API_KEY em server/.env.$(NC)"; \
+	  echo "$(BLUE)   Para a conversa com IA de verdade, preencha GEMINI_API_KEY em server/.env.$(NC)"; \
 	fi
 
 up: setup-env check-keys ## Backend + Expo juntos
@@ -102,7 +107,11 @@ up: setup-env check-keys ## Backend + Expo juntos
 	@echo "$(GREEN)🐉 Backend em http://$(LAN_IP):8787  |  Expo logo abaixo — leia o QR com o Expo Go$(NC)"
 	@trap 'kill 0' INT TERM EXIT; \
 	  (cd server && npm start) & \
+	  node tools/devlog/server.mjs >/dev/null & \
 	  sleep 2; $(MAKE) --no-print-directory mobile
+
+voice-log: ## Diagnóstico da voz em tempo real (eventos do app em modo dev; coletor sobe junto com make up)
+	@touch /tmp/shenlong-devlog.log; tail -n 40 -f /tmp/shenlong-devlog.log
 
 up-mock: ## Backend de teste + Expo
 	@test -d server/node_modules || $(MAKE) install-server
@@ -129,6 +138,31 @@ test: ## Testes
 typecheck:
 	@cd mobile && npx tsc --noEmit
 	@cd server && npx tsc --noEmit
+
+# ───────── APK local (Gradle, sem EAS) ─────────
+# Backend embutido no APK (o app instalado não tem o Metro para descobrir o IP)
+API_URL ?= http://$(LAN_IP):8787
+# ABIs nativas: arm64-v8a cobre celulares atuais; ABI=arm64-v8a,armeabi-v7a,x86_64 para aparelhos antigos/emulador
+ABI ?= arm64-v8a
+APK_OUT := mobile/build/shenlong.apk
+
+apk: ## APK release instalável (assinado com a chave debug) em mobile/build/shenlong.apk
+	@test -d mobile/node_modules || $(MAKE) install-mobile
+	@test -n "$(ANDROID_HOME)$(ANDROID_SDK_ROOT)" || test -d $(HOME)/Android/Sdk || { echo "$(RED)❌ Android SDK não encontrado (defina ANDROID_HOME)$(NC)"; exit 1; }
+	@echo "$(GREEN)📦 APK com backend em $(API_URL) (ABI $(ABI))$(NC)"
+	@cd mobile && EXPO_PUBLIC_API_URL=$(API_URL) npx expo prebuild --platform android --no-install
+	@cd mobile/android && EXPO_PUBLIC_API_URL=$(API_URL) NODE_ENV=production \
+	  ./gradlew assembleRelease -PreactNativeArchitectures=$(ABI)
+	@mkdir -p $(dir $(APK_OUT)) && cp mobile/android/app/build/outputs/apk/release/app-release.apk $(APK_OUT)
+	@echo "$(GREEN)✓ $(APK_OUT) ($$(du -h $(APK_OUT) | cut -f1)) — instale com: make apk-install$(NC)"
+
+apk-install: ## Instala o APK no aparelho conectado por USB (depuração USB ligada)
+	@test -f $(APK_OUT) || $(MAKE) --no-print-directory apk
+	@adb get-state >/dev/null 2>&1 || { echo "$(RED)❌ Nenhum aparelho no adb. Ligue a depuração USB e aceite a chave RSA no celular.$(NC)"; exit 1; }
+	@adb install -r $(APK_OUT) && echo "$(GREEN)✓ instalado — suba o backend com make server (mesma rede Wi‑Fi)$(NC)"
+
+apk-clean: ## Apaga o projeto nativo gerado (mobile/android) e o APK
+	@rm -rf mobile/android mobile/build
 
 # ───────── EAS ─────────
 EAS_PROFILE = $(if $(filter $(ENV),production),production,$(if $(filter $(ENV),development),development,preview))

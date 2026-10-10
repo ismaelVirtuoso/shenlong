@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
 import { Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
+import { useAudioRecorder } from 'expo-audio';
+import { REC_OPTIONS } from '@/features/voice/recording';
 import { controller } from './controller';
 import { Overlay } from './Overlay';
 import { Scene } from '@/features/scene/Scene';
@@ -17,16 +19,27 @@ const PHASES: Phase[] = ['boot', 'hunt', 'altar', 'summoning', 'appearing', 'gre
 
 /** Tela de desenvolvimento: pula para qualquer fase da experiência (abra /debug). */
 export default function Debug() {
-  const { phase } = useLocalSearchParams<{ phase?: string }>();
+  const { phase, wishes, release } = useLocalSearchParams<{ phase?: string; wishes?: string; release?: string }>();
   const quality = useStore((s) => s.quality);
+  // abrir /debug direto também liga o microfone (dá para testar a voz em altar/listening)
+  const recorder = useAudioRecorder(REC_OPTIONS);
   useEffect(() => {
-    if (phase && (PHASES as string[]).includes(phase)) controller.debugGoto(phase as Phase);
+    controller.attach(recorder);
+  }, [recorder]);
+  useEffect(() => {
+    if (release) {
+      // dragão presente e, depois, a saída dourada de desejo concedido
+      controller.debugGoto('greeting', 1);
+      const t = setTimeout(() => controller.debugGoto('disappearing', 1), 6000);
+      return () => clearTimeout(t);
+    }
+    if (phase && (PHASES as string[]).includes(phase)) controller.debugGoto(phase as Phase, Number(wishes ?? 0) || 0);
     else if (Platform.OS === 'web') {
       // web: toca a invocação sozinha para conferir a cena sem interação
       const t = setTimeout(() => controller.debugGoto('summoning'), 2500);
       return () => clearTimeout(t);
     }
-  }, [phase]);
+  }, [phase, wishes, release]);
   const st = useStore.getState();
   return (
     <View style={{ flex: 1, backgroundColor: '#000' }}>
@@ -42,6 +55,7 @@ export default function Debug() {
           <Btn label="espalhar" onPress={() => newHunt(null)} />
           <Btn label="bolt" onPress={() => st.bump('bolt', { boltBig: true })} />
           <Btn label="wish" onPress={() => st.bump('wish')} />
+          <Btn label="saída dourada" onPress={() => controller.debugGoto('disappearing', 1)} />
           <Btn label="speak" onPress={() => st.set({ speaking: !useStore.getState().speaking })} />
           <Btn label={`q:${quality}`} onPress={() => st.set({ quality: downgrade(quality) })} />
         </ScrollView>

@@ -43,8 +43,10 @@ module.exports = ({ config }) => ({
     ['expo-sensors', { motionPermission: 'O movimento do aparelho ajuda o radar e a câmera a encontrar as esferas.' }],
     [
       'expo-splash-screen',
-      { image: './assets/icon.png', imageWidth: 220, resizeMode: 'contain', backgroundColor: '#03100b' },
+      { image: './assets/splash-icon.png', imageWidth: 240, resizeMode: 'contain', backgroundColor: '#03100b' },
     ],
+    // APK local fala com o backend da LAN em http://IP:8787; release do Android bloqueia HTTP sem isso
+    ['expo-build-properties', { android: { usesCleartextTraffic: true } }],
   ],
   experiments: { typedRoutes: true },
   // só com URL definida (null vira {} no manifesto e quebrava o endereço do servidor)

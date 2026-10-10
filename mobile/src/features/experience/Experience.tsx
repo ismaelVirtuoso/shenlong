@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { AppState, View } from 'react-native';
-import { RecordingPresets, useAudioRecorder } from 'expo-audio';
+import { useAudioRecorder } from 'expo-audio';
 import { useKeepAwake } from 'expo-keep-awake';
 import { controller } from './controller';
 import { Overlay } from './Overlay';
@@ -8,8 +8,7 @@ import { Scene } from '@/features/scene/Scene';
 import { HuntScreen } from '@/features/hunt/HuntScreen';
 import { useStore as usePhaseStore } from '@/features/experience/store';
 import { DragonView } from '@/features/dragon3d/DragonView';
-
-const REC_OPTIONS = { ...RecordingPresets.LOW_QUALITY, sampleRate: 16000, numberOfChannels: 1, isMeteringEnabled: true };
+import { REC_OPTIONS } from '@/features/voice/recording';
 
 export default function Experience() {
   useKeepAwake();
@@ -20,8 +19,12 @@ export default function Experience() {
   }, [recorder]);
 
   useEffect(() => {
+    controller.openingMusic();
+    // só "background" de verdade: no iOS, "inactive" é transitório (alerta do sistema, central de
+    // notificações, Control Center) e não deve derrubar a invocação nem desligar o microfone
     const sub = AppState.addEventListener('change', (s) => {
-      if (s !== 'active') controller.background();
+      if (s === 'background') controller.background();
+      else if (s === 'active') controller.openingMusic();
     });
     return () => sub.remove();
   }, []);

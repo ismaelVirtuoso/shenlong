@@ -1,8 +1,8 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
-/** Máximo de desejos antes de Shenlong se despedir (o servidor também sabe disso). */
-export const MAX_WISHES = 3;
+/** Desejos por invocação: concedido o desejo, Shenlong se despede e as esferas se espalham. */
+export const MAX_WISHES = 1;
 /** Silêncio (ms) no turno de escuta antes de Shenlong perguntar se ainda está aí. */
 export const IDLE_MS = 18000;
 /** Toque longo nas esferas (ms) que invoca sem voz. */

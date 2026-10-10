@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing, FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming,
 } from 'react-native-reanimated';
@@ -9,16 +9,15 @@ import { controller } from './controller';
 import { micLevel, useStore } from './store';
 
 const GOLD = '#f6c945';
+/** Logo oficial (Wikimedia Commons, CC BY-SA 4.0; marca da Toei Animation/Shueisha) */
+const LOGO = require('../../../assets/images/dbz-logo.png');
 
 export function Overlay() {
   const insets = useSafeAreaInsets();
   const phase = useStore((s) => s.m.phase);
-  const caption = useStore((s) => s.caption);
   const micDenied = useStore((s) => s.micDenied);
 
   const showMic = phase === 'altar' || phase === 'listening';
-  const showCaption =
-    !!caption && (phase === 'greeting' || phase === 'speaking' || phase === 'thinking' || phase === 'listening' || phase === 'goodbye');
 
   return (
     <Pressable
@@ -34,8 +33,6 @@ export function Overlay() {
         {phase === 'altar' && <Altar micDenied={micDenied} />}
 
         <View style={styles.bottom}>
-          {showCaption && caption && <Bubble key={caption.id} who={caption.who} text={caption.text} />}
-          {phase === 'thinking' && <Text style={styles.status}>Shenlong está ouvindo…</Text>}
           {showMic && <MicOrb />}
         </View>
       </View>
@@ -69,7 +66,7 @@ function Boot() {
   const pulse = usePulse();
   return (
     <Animated.View entering={FadeIn.duration(1500).delay(600)} style={styles.bootWrap}>
-      <Text style={styles.title}>SHENLONG</Text>
+      <Image source={LOGO} style={styles.logo} resizeMode="contain" accessibilityLabel="Dragon Ball Z" />
       <Text style={styles.subtitle}>Seu desejo, minha missão.</Text>
       <Text style={styles.bootText}>As sete Esferas do Dragão estão diante de você…</Text>
       <View style={{ flex: 1 }} />
@@ -84,19 +81,6 @@ function Altar({ micDenied }: { micDenied: boolean }) {
     <Animated.View entering={FadeIn.duration(900).delay(400)} exiting={FadeOut.duration(400)} style={styles.altarWrap}>
       <Text style={styles.say}>{micDenied ? 'Segure a tela para chamar' : 'Diga em voz alta'}</Text>
       {!micDenied && <Text style={styles.quote}>“Shenlong, apareça!”</Text>}
-    </Animated.View>
-  );
-}
-
-function Bubble({ who, text }: { who: 'shenlong' | 'user'; text: string }) {
-  const user = who === 'user';
-  return (
-    <Animated.View
-      entering={FadeIn.duration(350)}
-      exiting={FadeOut.duration(250)}
-      style={[styles.bubble, user ? styles.bubbleUser : styles.bubbleDragon]}
-    >
-      <Text style={[styles.bubbleText, user && { color: '#dff0ff' }]}>{text}</Text>
     </Animated.View>
   );
 }
@@ -162,18 +146,13 @@ const styles = StyleSheet.create({
   fill: { flex: 1, paddingHorizontal: 22 },
   bottom: { position: 'absolute', left: 22, right: 22, bottom: 0, paddingBottom: 36, alignItems: 'center', gap: 18 },
   bootWrap: { flex: 1, alignItems: 'center' },
-  title: { marginTop: 24, color: GOLD, fontSize: 40, fontWeight: '800', letterSpacing: 6, textShadowColor: '#ff8a00', textShadowRadius: 18 },
-  subtitle: { color: '#9bb7ff', fontStyle: 'italic', fontSize: 15, marginTop: 4 },
+  logo: { marginTop: 24, width: '92%', maxWidth: 460, aspectRatio: 1000 / 278 },
+  subtitle: { color: '#9bb7ff', fontStyle: 'italic', fontSize: 15, marginTop: 10 },
   bootText: { color: '#f3e9d2', fontSize: 16, textAlign: 'center', lineHeight: 23, textShadowColor: '#000', textShadowRadius: 8, marginTop: 18, paddingHorizontal: 12 },
   tap: { color: '#fff', fontSize: 14, letterSpacing: 2, marginBottom: 28 },
   altarWrap: { alignItems: 'center', marginTop: '14%' },
   say: { color: '#f3e9d2', fontSize: 16, textShadowColor: '#000', textShadowRadius: 8 },
   quote: { color: GOLD, fontSize: 30, fontWeight: '700', marginTop: 6, textAlign: 'center', textShadowColor: '#ff8a00', textShadowRadius: 14 },
-  status: { color: '#bcd6ff', fontSize: 15, letterSpacing: 1 },
-  bubble: { maxWidth: '100%', paddingHorizontal: 20, paddingVertical: 14, borderRadius: 22, borderWidth: 1 },
-  bubbleDragon: { backgroundColor: 'rgba(8,14,10,0.72)', borderColor: 'rgba(246,201,69,0.45)' },
-  bubbleUser: { backgroundColor: 'rgba(20,60,120,0.78)', borderColor: 'rgba(120,180,255,0.5)' },
-  bubbleText: { color: '#fff7e0', fontSize: 18, lineHeight: 25, textAlign: 'center' },
   micRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   bars: { flexDirection: 'row', alignItems: 'center', gap: 4, height: 44 },
   bar: { width: 3, borderRadius: 2, backgroundColor: '#56b4ff' },

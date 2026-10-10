@@ -6,7 +6,7 @@ import { config } from '../config.js';
 
 /**
  * Reconhecimento de fala LOCAL e gratuito (faster-whisper no computador), usado quando não há
- * OPENAI_API_KEY. Worker persistente: o modelo carrega uma vez (~1–2 s); cada fala ~1 s (modelo base).
+ * GEMINI_API_KEY. Worker persistente: o modelo carrega uma vez (~1–2 s); cada fala ~1 s (modelo base).
  */
 const python = () => resolve(dirname(config.piperBin), 'python');
 const WORKER = resolve(import.meta.dirname, '../../../tools/voice/stt_worker.py');

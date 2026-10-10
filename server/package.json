@@ -12,11 +12,9 @@
     "gen:voice": "tsx scripts/gen-voice.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.132.1",
     "@hono/node-server": "^2.1.4",
     "dotenv": "^18.0.6",
-    "hono": "^4.13.13",
-    "openai": "^6.49.0"
+    "hono": "^4.13.13"
   },
   "devDependencies": {
     "@types/node": "^26.6.4",

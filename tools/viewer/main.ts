@@ -22,7 +22,7 @@ async function main() {
 
   const T = num('t', 8000);
   const inp: DragonInput = {
-    t: 0, appear: num('appear', 1), summon: num('summon', 1), speak: num('speak', 0), listen: num('listen', 0),
+    t: 0, appear: num('appear', 1), dive: num('dive', 0), gold: num('gold', 0), grant: num('grant', 0), summon: num('summon', 1), speak: num('speak', 0), listen: num('listen', 0),
     think: num('think', 0), wish: num('wish', 0), flash: num('flash', 0), poke: 0, glow: num('glow', 0.3),
   };
   // simula os últimos segundos (bigodes assentam com a física)
@@ -46,6 +46,12 @@ async function main() {
   for (const k of (P.get('hide') ?? '').split(',').filter(Boolean))
     scene.scene.traverse((o) => { if ((o as any).type === k || o.name === k) o.visible = false; });
   scene.render();
+  if (P.has('anchor')) {
+    // onde o app desenha as esferas unidas (ponta da cauda)
+    const dot = document.createElement('div');
+    Object.assign(dot.style, { position: 'fixed', width: '28px', height: '28px', borderRadius: '50%', border: '3px solid #ff0', left: `${scene.anchor.x * w - 17}px`, top: `${scene.anchor.y * h - 17}px` });
+    document.body.appendChild(dot);
+  }
   document.title = 'ready';
   if (P.has('anim')) {
     const t0 = performance.now();

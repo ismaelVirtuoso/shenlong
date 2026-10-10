@@ -1,4 +1,4 @@
-import { TIMING } from '../experience/timing';
+import { RELEASE, TIMING } from '../experience/timing';
 import { useStore } from '../experience/store';
 import type { Phase } from '@/core/machine';
 import type { DragonInput } from './core/types';
@@ -6,6 +6,7 @@ import type { DragonInput } from './core/types';
 type Ease = (x: number) => number;
 const linear: Ease = (x) => x;
 const inQuad: Ease = (x) => x * x;
+const inCubic: Ease = (x) => x * x * x;
 const outQuad: Ease = (x) => 1 - (1 - x) * (1 - x);
 const inOutQuad: Ease = (x) => (x < 0.5 ? 2 * x * x : 1 - (-2 * x + 2) ** 2 / 2);
 
@@ -52,11 +53,13 @@ class Anim {
 /** Espelha (no JS) a mesma coreografia da cena 2D (drive.ts), a partir do store. */
 export class DragonTimeline {
   private a = {
-    appear: new Anim(0), summon: new Anim(0), speak: new Anim(0), listen: new Anim(0), think: new Anim(0),
-    wish: new Anim(0), flash: new Anim(0), poke: new Anim(0), glow: new Anim(0.15),
+    appear: new Anim(0), dive: new Anim(0), gold: new Anim(0), grant: new Anim(0), summon: new Anim(0), speak: new Anim(0),
+    listen: new Anim(0), think: new Anim(0), wish: new Anim(0), flash: new Anim(0), poke: new Anim(0), glow: new Anim(0.15),
   };
   private unsub: () => void;
-  private out: DragonInput = { t: 0, appear: 0, summon: 0, speak: 0, listen: 0, think: 0, wish: 0, flash: 0, poke: 0, glow: 0.15 };
+  private out: DragonInput = {
+    t: 0, appear: 0, dive: 0, gold: 0, grant: 0, summon: 0, speak: 0, listen: 0, think: 0, wish: 0, flash: 0, poke: 0, glow: 0.15,
+  };
 
   constructor() {
     let prev = useStore.getState();
@@ -69,6 +72,7 @@ export class DragonTimeline {
       if (f.bolt !== p.bolt)
         this.a.flash.run(now, [{ to: 1, dur: 40 }, { to: 0.35, dur: 90 }, { to: 0.8, dur: 50 }, { to: 0, dur: 700, ease: outQuad }]);
       if (f.wish !== p.wish) {
+        this.a.grant.run(now, [{ to: 1, dur: 500, ease: outQuad }]);
         this.a.wish.run(now, [{ to: 1, dur: 120 }, { to: 0, dur: 2200, ease: outQuad }]);
         this.a.flash.run(now, [{ to: 0.8, dur: 80 }, { to: 0, dur: 900 }]);
       }
@@ -80,7 +84,12 @@ export class DragonTimeline {
   }
 
   private applyPhase(phase: Phase, now: number) {
-    const { appear, summon, glow, listen, think } = this.a;
+    const { appear, dive, gold, grant, summon, glow, listen, think } = this.a;
+    if (phase !== 'disappearing') {
+      dive.set(0);
+      gold.set(0);
+    }
+    if (phase === 'hunt' || phase === 'altar' || phase === 'summoning' || phase === 'appearing') grant.set(0);
     switch (phase) {
       case 'boot':
         break;
@@ -102,7 +111,22 @@ export class DragonTimeline {
         appear.run(now, [{ to: 1, dur: TIMING.appear, ease: inOutQuad }]);
         break;
       case 'disappearing':
-        appear.run(now, [{ to: 0, dur: TIMING.disappear * 0.6, ease: inQuad }]);
+        if (useStore.getState().m.wishes > 0) {
+          // desejo realizado: brilha todo em dourado e estoura em luz (a cena 2D faz as esferas)
+          const R = TIMING.release;
+          gold.set(0);
+          gold.run(now, [
+            { to: 1, dur: R * RELEASE.gold, ease: inOutQuad },
+            { to: 2, dur: R * (RELEASE.burst - RELEASE.gold), ease: inQuad },
+          ]);
+          appear.run(now, [{ to: 0, dur: R * 0.3, ease: inOutQuad, delay: R * RELEASE.burst }]);
+          summon.run(now, [{ to: 0, dur: R * 0.3, ease: inOutQuad, delay: R * 0.6 }]);
+          break;
+        }
+        // mergulho de cabeça para baixo da tela: ergue-se devagar e despenca acelerando, o corpo atrás
+        dive.set(0);
+        dive.run(now, [{ to: 1, dur: TIMING.disappear * 0.85, ease: inCubic }]);
+        appear.run(now, [{ to: 0, dur: TIMING.disappear * 0.3, ease: inOutQuad, delay: TIMING.disappear * 0.6 }]);
         summon.run(now, [{ to: 0, dur: TIMING.disappear * 0.45, ease: inOutQuad, delay: TIMING.disappear * 0.55 }]);
         break;
       default:

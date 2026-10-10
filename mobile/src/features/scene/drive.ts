@@ -26,6 +26,8 @@ export function useSceneValues(): SceneValues {
   const wish = useSharedValue(0);
   const shake = useSharedValue(0);
   const poke = useSharedValue(0);
+  const seed = useSharedValue(Math.random() * 1000);
+  const release = useSharedValue(0);
 
   const phase = useSceneStore((s) => s.m.phase);
   const speaking = useSceneStore((s) => s.speaking);
@@ -39,6 +41,10 @@ export function useSceneValues(): SceneValues {
 
   useEffect(() => {
     const ease = Easing.inOut(Easing.quad);
+    if (phase !== 'disappearing') {
+      cancelAnimation(release);
+      release.value = 0;
+    }
     switch (phase) {
       case 'boot':
         break;
@@ -58,11 +64,18 @@ export function useSceneValues(): SceneValues {
         summon.value = withTiming(1, { duration: TIMING.summon, easing: Easing.in(Easing.quad) });
         break;
       case 'appearing':
+        seed.value = Math.random() * 1000;
         summon.value = 1;
         appear.value = 0;
         appear.value = withTiming(1, { duration: TIMING.appear, easing: ease });
         break;
       case 'disappearing':
+        if (useSceneStore.getState().m.wishes > 0) {
+          // desejo realizado: as esferas nascem da luz do dragão, giram, se fundem e são lançadas
+          release.value = 0;
+          release.value = withTiming(1, { duration: TIMING.release, easing: Easing.linear });
+          break;
+        }
         // o dragão volta para a luz, depois as esferas descem ao altar
         appear.value = withTiming(0, { duration: TIMING.disappear * 0.6, easing: Easing.in(Easing.quad) });
         summon.value = withDelay(TIMING.disappear * 0.55, withTiming(0, { duration: TIMING.disappear * 0.45, easing: ease }));
@@ -73,7 +86,7 @@ export function useSceneValues(): SceneValues {
     }
     listen.value = withTiming(phase === 'listening' ? 1 : 0, { duration: 450 });
     think.value = withTiming(phase === 'thinking' ? 1 : 0, { duration: 500 });
-  }, [phase, summon, appear, glow, intro, listen, think]);
+  }, [phase, summon, appear, glow, intro, listen, think, seed, release]);
 
   useEffect(() => {
     speak.value = withTiming(speaking ? 1 : 0, { duration: 160 });
@@ -102,5 +115,5 @@ export function useSceneValues(): SceneValues {
     prev.current = { ...fx };
   }, [fx, phase, boltSeed, flash, shake, wish, glow, poke]);
 
-  return { clock, intro, summon, appear, glow, speak, listen, think, flash, boltSeed, wish, shake, poke, mic: micLevel };
+  return { clock, intro, summon, appear, glow, speak, listen, think, flash, boltSeed, wish, shake, poke, seed, release, mic: micLevel };
 }

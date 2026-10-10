@@ -14,6 +14,7 @@ const SOURCES = {
   radar: require('../../assets/sfx/radar.wav'),
   radarOn: require('../../assets/sfx/radarOn.wav'),
   gather: require('../../assets/sfx/gather.wav'),
+  opening: require('../../assets/sfx/opening.mp3'),
 } as const;
 
 export type SfxName = keyof typeof SOURCES;
@@ -26,7 +27,8 @@ function get(name: SfxName): AudioPlayer | undefined {
   try {
     let p = players.get(name);
     if (!p) {
-      p = createAudioPlayer(SOURCES[name]);
+      // iOS: sem isto, pausar/terminar um efeito desativa a sessão de áudio e corta o microfone
+      p = createAudioPlayer(SOURCES[name], { keepAudioSessionActive: true });
       players.set(name, p);
     }
     return p;
@@ -52,6 +54,14 @@ export function playSfx(name: SfxName, opts: { volume?: number; loop?: boolean }
   } catch {}
 }
 
+/** Como playSfx, mas não reinicia se já estiver tocando. */
+export function ensureSfx(name: SfxName, opts: { volume?: number; loop?: boolean } = {}) {
+  try {
+    if (players.get(name)?.playing) return;
+  } catch {}
+  playSfx(name, opts);
+}
+
 export function stopSfx(name: SfxName, fadeMs = 0) {
   const p = players.get(name);
   if (!p) return;
@@ -75,6 +85,7 @@ export function stopSfx(name: SfxName, fadeMs = 0) {
   );
 }
 
-export function stopAllSfx() {
-  (Object.keys(SOURCES) as SfxName[]).forEach((n) => stopSfx(n));
+/** `keep`: efeito que continua (ex.: a música de abertura terminando seu fade) */
+export function stopAllSfx(keep?: SfxName) {
+  (Object.keys(SOURCES) as SfxName[]).forEach((n) => n !== keep && stopSfx(n));
 }

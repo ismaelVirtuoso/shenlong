@@ -1,7 +1,6 @@
-import Anthropic from '@anthropic-ai/sdk';
-import OpenAI from 'openai';
 import { config } from '../config.js';
 import { systemPrompt } from '../persona.js';
+import { geminiChatStream } from './gemini.js';
 import { offlineReply } from './offline.js';
 
 export interface Turn {
@@ -16,18 +15,8 @@ const MOCK_REPLIES = [
 ];
 let mockIdx = 0;
 
-let anthropic: Anthropic | undefined;
-let openai: OpenAI | undefined;
-const getAnthropic = () => (anthropic ??= new Anthropic({ apiKey: config.anthropicKey }));
-export const getOpenAI = () => (openai ??= new OpenAI({ apiKey: config.openaiKey }));
-
-/** IA paga se houver chave; senão o Shenlong por regras (sempre disponível). */
-export const llmEngine = (): 'mock' | 'anthropic' | 'openai' | 'offline' =>
-  config.mock ? 'mock'
-    : config.llmProvider === 'anthropic' && config.anthropicKey ? 'anthropic'
-    : config.openaiKey ? 'openai'
-    : config.anthropicKey ? 'anthropic'
-    : 'offline';
+/** Gemini se houver chave; senão o Shenlong por regras (sempre disponível). */
+export const llmEngine = (): 'mock' | 'gemini' | 'offline' => (config.mock ? 'mock' : config.geminiKey ? 'gemini' : 'offline');
 export const llmAvailable = () => true;
 
 /** Stream de deltas de texto da resposta de Shenlong. */
@@ -42,32 +31,18 @@ export async function* streamReply(history: Turn[], wishes: number): AsyncGenera
   }
   const engine = llmEngine();
   if (engine === 'offline') {
-    const text = offlineReply(history, wishes, config.maxWishes);
-    for (const w of text.split(/(?<= )/)) yield w;
+    yield* offlineWords(history, wishes);
     return;
   }
-  const system = systemPrompt(wishes);
-  if (engine === 'openai') {
-    const stream = await getOpenAI().chat.completions.create({
-      model: config.openaiChatModel,
-      stream: true,
-      max_tokens: 160,
-      temperature: 0.9,
-      messages: [{ role: 'system', content: system }, ...history],
-    });
-    for await (const chunk of stream) {
-      const d = chunk.choices[0]?.delta?.content;
-      if (d) yield d;
-    }
-    return;
+  try {
+    yield* geminiChatStream(systemPrompt(wishes), history);
+  } catch (e) {
+    // sem rede/cota: não deixa a criança sem resposta — cai nas regras (só se nada foi dito ainda)
+    console.error('gemini chat failed', (e as Error).message);
+    yield* offlineWords(history, wishes);
   }
-  const stream = getAnthropic().messages.stream({
-    model: config.anthropicModel,
-    max_tokens: 200,
-    system,
-    messages: history,
-  });
-  for await (const ev of stream) {
-    if (ev.type === 'content_block_delta' && ev.delta.type === 'text_delta') yield ev.delta.text;
-  }
+}
+
+function* offlineWords(history: Turn[], wishes: number) {
+  for (const w of offlineReply(history, wishes, config.maxWishes).split(/(?<= )/)) yield w;
 }

@@ -27,10 +27,10 @@ export class MeshBuilder {
     return this.count - 1;
   }
   /**
-   * Tubo afunilado ao longo de uma bezier cúbica, terminando em ponta.
+   * Tubo afunilado ao longo de uma bezier cúbica, terminando em ponta (ou cortado reto com `cap`).
    * radius(t), color(t) → [r,g,b] sRGB; flat = achatamento da seção (1 = redonda)
    */
-  tube(pts, { rings = 18, sides = 10, radius, color, flat = 1, swayScale = 1, up = [0, 1, 0] }) {
+  tube(pts, { rings = 18, sides = 10, radius, color, flat = 1, swayScale = 1, up = [0, 1, 0], cap = false }) {
     const P = (t) => bezier(pts[0], pts[1], pts[2], pts[3], t);
     let prevN = null;
     const base = this.count;
@@ -42,7 +42,7 @@ export class MeshBuilder {
       if (!Number.isFinite(N[0]) || Math.hypot(...N) < 0.5) N = norm(cross(T, [1, 0, 0]));
       prevN = N;
       const B = cross(T, N);
-      const rad = t >= 1 ? 0.0005 : radius(t);
+      const rad = t >= 1 && !cap ? 0.0005 : radius(t);
       for (let k = 0; k < sides; k++) {
         const a = (k / sides) * Math.PI * 2;
         const ca = Math.cos(a), sa = Math.sin(a) * flat;
@@ -56,6 +56,18 @@ export class MeshBuilder {
         const c = a + sides, d = b + sides;
         this.i.push(a, c, b, b, c, d);
       }
+    if (cap) {
+      // corte reto (galho quebrado): anel duplicado com normal axial + leque até o centro
+      const T = norm(sub(P(1), P(0.98)));
+      const ring0 = base + rings * sides;
+      const capBase = this.count;
+      for (let k = 0; k < sides; k++) {
+        const q = ring0 + k;
+        this.vertex([this.p[q * 3], this.p[q * 3 + 1], this.p[q * 3 + 2]], T, color(1, k / sides).map((v) => v * 0.8), swayScale);
+      }
+      const center = this.vertex(add(P(1), mul(T, radius(1) * 0.15)), T, color(1, 0).map((v) => v * 0.7), swayScale);
+      for (let k = 0; k < sides; k++) this.i.push(capBase + k, capBase + ((k + 1) % sides), center);
+    }
   }
   build() {
     return {

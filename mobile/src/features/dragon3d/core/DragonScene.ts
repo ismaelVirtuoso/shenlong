@@ -2,12 +2,14 @@ import * as THREE from 'three';
 import { Atmosphere } from './atmosphere';
 import { Dragon, HEAD_FINAL } from './dragon';
 import type { DragonAsset } from './glb';
+import { BALLS } from './path';
 import { createMaterials, shared } from './materials';
 import type { DragonInput, QualityLevel } from './types';
 
-// câmera afastada o bastante para o corpo inteiro (≈ 7 de largura) caber numa tela em pé
-export const CAMERA_POS = new THREE.Vector3(0.35, 0.4, 20); // um pouco abaixo: olhando para cima, mais imponente
-const CAMERA_TARGET = new THREE.Vector3(0.35, 1.1, 0);
+// corpo inteiro (o "8" tem ≈ 6 de largura × 10 de altura) numa tela em pé, acima da interface de voz;
+// um pouco abaixo do centro do dragão: olhando para cima, mais imponente
+export const CAMERA_POS = new THREE.Vector3(0.35, -0.5, 26.5);
+const CAMERA_TARGET = new THREE.Vector3(0.35, 0.0, 0);
 
 /**
  * Cena 3D do Shenlong (three.js puro, sem React): roda no app (expo-gl) e no viewer de testes (WebGL).
@@ -18,6 +20,11 @@ export class DragonScene {
   private dragon: Dragon;
   private atmo: Atmosphere;
   private shake = new THREE.Vector3();
+  private v = new THREE.Vector3();
+  /** onde as esferas unidas (ponta da cauda) aparecem na tela, em frações (0..1) da largura/altura */
+  readonly anchor = { x: 0.5, y: 0.78 };
+  /** luz dourada das esferas unidas sobre a cauda */
+  private ballLight = new THREE.PointLight('#ff9a1a', 0, 7, 2);
   /** câmera de inspeção (viewer): yaw/pitch em graus ao redor da cabeça */
   debugOrbit: { yaw: number; pitch: number; dist: number; mouth?: boolean } | null = null;
 
@@ -38,6 +45,8 @@ export class DragonScene {
     this.scene.add(this.atmo.group);
     this.dragon = new Dragon(asset, createMaterials(), quality, CAMERA_POS);
     this.scene.add(this.dragon.root);
+    this.ballLight.position.copy(BALLS);
+    this.scene.add(this.ballLight);
   }
 
   setSize(width: number, height: number) {
@@ -70,11 +79,16 @@ export class DragonScene {
       this.camera.position.x += Math.sin(t * 0.13) * 0.25;
       this.camera.position.y += Math.sin(t * 0.17) * 0.12;
       // aproxima um pouco quando o dragão está presente (dolly-in lento)
-      this.camera.position.z -= 1.2 * inp.appear;
+      this.camera.position.z -= 1.0 * inp.appear;
       this.camera.lookAt(CAMERA_TARGET.x, CAMERA_TARGET.y + 0.4 * inp.appear, CAMERA_TARGET.z);
     }
     this.atmo.update(inp, this.scene);
+    this.ballLight.intensity = 220 * inp.summon * (1 - inp.dive) * (1 - Math.min(1, inp.gold)) * (0.9 + 0.1 * Math.sin(t * 4));
     this.dragon.update(inp, this.camera);
+    this.camera.updateMatrixWorld();
+    this.v.copy(BALLS).project(this.camera);
+    this.anchor.x = (this.v.x + 1) / 2;
+    this.anchor.y = (1 - this.v.y) / 2;
   }
 
   render() {

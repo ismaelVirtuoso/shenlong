@@ -116,7 +116,7 @@ if (sttEngine() === 'local') warmWhisper();
 serve({ fetch: app.fetch, port: config.port, hostname: '0.0.0.0' }, (i) => {
   console.log(`🐉 Shenlong server :${i.port}  ouvir=${sttEngine() ?? 'NÃO'}  voz=${ttsEngine() ?? 'aparelho'}  conversa=${llmEngine()}`);
   if (llmEngine() === 'offline') {
-    console.log('   (sem chave: ouvir/voz locais e grátis; conversa por regras. Para a IA de verdade, preencha OPENAI_API_KEY em server/.env)');
+    console.log('   (sem chave: ouvir/voz locais e grátis; conversa por regras. Para a IA de verdade, preencha GEMINI_API_KEY em server/.env)');
   }
-  if (!sttAvailable()) console.log('⚠️  Sem reconhecimento de fala: rode `make voice-setup` (grátis) ou preencha OPENAI_API_KEY.');
+  if (!sttAvailable()) console.log('⚠️  Sem reconhecimento de fala: rode `make voice-setup` (grátis) ou preencha GEMINI_API_KEY.');
 });

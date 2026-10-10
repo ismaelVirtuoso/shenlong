@@ -7,6 +7,7 @@ export type LineId =
   | 'notheard'
   | 'stillthere'
   | 'goodbye'
+  | 'farewell'
   | 'offline'
   | 'thinking1'
   | 'thinking2';
@@ -16,6 +17,8 @@ export const LINES: Record<LineId, string> = {
   notheard: 'Os ventos estão agitados... não consegui ouvir. Fale de novo, com calma.',
   stillthere: 'Você ainda está aí, pequeno viajante? Estou ouvindo...',
   goodbye: 'Seu tempo comigo chegou ao fim. Até a próxima vez que as esferas brilharem.',
+  /** depois do desejo concedido */
+  farewell: 'Seu desejo se realizará, rapaz... É tempo de partir.',
   offline: 'Os ventos do céu estão fracos esta noite... Chame-me de novo em breve.',
   thinking1: 'Hmmm... deixe-me ver...',
   thinking2: 'Interessante... muito interessante...',

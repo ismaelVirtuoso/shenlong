@@ -29,12 +29,13 @@ make voice-setup   # 1ª vez: ouvir (Whisper) e voz (Piper) locais e grátis
 make up            # backend (:8787) + Expo; leia o QR com o Expo Go
 ```
 - Celular e PC na **mesma rede Wi‑Fi**. Se não conectar: `sudo ufw allow 8081,8787/tcp`.
-- Sem chave nenhuma, tudo funciona: ouvir e falar locais, conversa por regras. Com `OPENAI_API_KEY` em `server/.env`, a conversa vira IA de verdade.
+- Sem chave nenhuma, tudo funciona: ouvir e falar locais, conversa por regras. Com `GEMINI_API_KEY` em `server/.env` (Google AI Studio), conversa, ouvir e voz passam a usar o Gemini.
 - O app descobre o servidor sozinho (IP do Metro); no emulador Android também tenta `10.0.2.2`. A barra de diagnóstico (só em dev) mostra `servidor ✓ ouvir ✓ voz ✓ conversa ✓`.
 - `/debug` (`shenlong://debug`): pula para qualquer fase; botões "+1 esfera", "7 esferas" e "espalhar" para testar a caçada. Em dev, o radar e a câmera têm um controle ↺ ↑ ↻ para simular passos e giros.
 
 ## Instalar sem loja
-- **Android (tablet)**: `make mobile-build-android ENV=preview` gera um **APK** pelo EAS; abra o link no tablet e instale (permitir "fontes desconhecidas"). Não precisa da Play Store.
+- **Android, build local (sem conta Expo)**: `make apk` gera `mobile/build/shenlong.apk` com o backend embutido em `http://<IP da LAN>:8787` (outro endereço: `make apk API_URL=https://...`; aparelho antigo/emulador: `ABI=arm64-v8a,armeabi-v7a,x86_64`). Com o celular no USB (depuração USB ligada), `make apk-install`; ou copie o APK para o aparelho e abra (permitir "fontes desconhecidas"). Depois é só `make server` no PC, na mesma rede Wi‑Fi. Precisa de JDK 17+ e Android SDK (`ANDROID_HOME`); o 1º build leva ~15 min. O APK é assinado com a chave debug: serve para instalar direto, não para a Play Store. Ao mudar o IP do PC, rode `make apk` de novo.
+- **Android (tablet) pelo EAS**: `make mobile-build-android ENV=preview` gera um **APK** na nuvem da Expo; abra o link no tablet e instale (permitir "fontes desconhecidas"). Não precisa da Play Store.
 - **iPhone**: pelo Expo Go (desenvolvimento) ou, para um app instalado, conta Apple Developer (US$ 99/ano) + `make mobile-build-ios ENV=preview` (instalação *ad hoc* no aparelho cadastrado) ou TestFlight. Sem a conta paga, só via Xcode num Mac (expira em 7 dias).
 - **Antes do build:** no app instalado não há Metro para descobrir o PC, então o endereço do servidor vem de `EXPO_PUBLIC_API_URL` em `mobile/eas.json` (hoje um exemplo). Aponte para um servidor hospedado (HTTPS) ou para o PC de casa; neste caso o Android precisa liberar HTTP na rede local.
 
@@ -43,7 +44,7 @@ make up            # backend (:8787) + Expo; leia o QR com o Expo Go
 
 ## Voz
 - Sem chave: reconhecimento **Whisper** local e voz **Piper** pt-BR com efeito "voz de dragão" (ffmpeg: grave ~90 Hz, reverb). Conversa por regras (entende "eu quero …", concede, pergunta o próximo desejo, se despede).
-- Com `OPENAI_API_KEY`: reconhecimento, voz e conversa da OpenAI (uma chave basta), com o mesmo efeito na voz.
+- Com `GEMINI_API_KEY`: reconhecimento, voz (Charon) e conversa do Gemini — uma chave só, com o mesmo efeito de voz de dragão. Se o Gemini falhar (rede/cota), o servidor cai sozinho na voz e nas regras locais.
 - Sons do radar, das esferas e da invocação são **sintetizados por código** (`cd mobile && npm run gen:sfx`). Para usar outro som de radar, troque `mobile/assets/sfx/radar.wav` (mesmo nome).
 
 ## Testes

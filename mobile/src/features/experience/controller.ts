@@ -1,19 +1,20 @@
 import type { AudioRecorder } from 'expo-audio';
-import { IDLE_MS, MAX_WISHES } from '@/core/config';
+import { apiUrl, IDLE_MS, MAX_WISHES } from '@/core/config';
+import { dclip, dlog } from '@/core/devlog';
 import type { LineId } from '@/core/lines';
 import { transition, type Event, type MachineState, type Phase } from '@/core/machine';
-import { isInvocation } from '@/core/phrases';
+import { isInvocation, normalize } from '@/core/phrases';
 import { hap, rampHaptics } from '@/audio/haptics';
-import { loadSfx, playSfx, stopAllSfx, stopSfx } from '@/audio/sfx';
+import { ensureSfx, loadSfx, playSfx, stopAllSfx, stopSfx } from '@/audio/sfx';
 import { ChatUnavailable, streamChat, type Turn } from '../conversation/chat';
 import { checkBackend } from '../conversation/health';
 import { Speaker } from '../speech/speaker';
-import { deleteClip, looksLikeHallucination, SttUnavailable, transcribe } from '../voice/stt';
+import { deleteClip, isPromptEcho, looksLikeHallucination, SttUnavailable, transcribe } from '../voice/stt';
 import { VoiceListener, type ClipInfo } from '../voice/listener';
 import { micLevel, useStore } from './store';
 import { loadHunt, newHunt, useHunt } from '../hunt/store';
 import { tracker } from '../hunt/tracker';
-import { TIMING } from './timing';
+import { RELEASE, TIMING } from './timing';
 
 
 const MAX_HISTORY = 12;
@@ -21,8 +22,8 @@ const MAX_HISTORY = 12;
 class Controller {
   private voice: VoiceListener | null = null;
   private speaker = new Speaker({
-    onPlay: (text) => {
-      useStore.getState().set({ speaking: true, caption: { id: Date.now(), who: 'shenlong', text } });
+    onPlay: () => {
+      useStore.getState().set({ speaking: true });
       this.firstPlay?.();
     },
     onIdle: () => useStore.getState().set({ speaking: false }),
@@ -43,13 +44,21 @@ class Controller {
   }
 
   attach(recorder: AudioRecorder) {
-    if (!this.voice) this.voice = new VoiceListener(recorder);
+    if (this.voice?.recorder === recorder) return;
+    void this.voice?.stop(); // gravador antigo é liberado quando a tela que o criou desmonta
+    this.voice = new VoiceListener(recorder);
   }
 
   // ───────────── entradas externas ─────────────
+  /** Tela de abertura: tema de abertura em loop (volta a tocar se o app sair e voltar ainda nela). */
+  openingMusic() {
+    if (this.m.phase === 'boot') ensureSfx('opening', { loop: true, volume: 0.8 });
+  }
+
   async start() {
     if (this.started || this.m.phase !== 'boot') return;
     this.started = true;
+    stopSfx('opening', 1800);
     loadSfx();
     void this.refreshBackend();
     await loadHunt();
@@ -102,16 +111,16 @@ class Controller {
   }
 
   /** Atalho de debug: pula direto para uma fase (tela /debug). */
-  debugGoto(phase: Phase) {
+  debugGoto(phase: Phase, wishes = 0) {
     this.cancelAll();
-    useStore.getState().set({ m: { phase, wishes: 0, idlePrompts: 0 }, caption: null, speaking: false });
+    useStore.getState().set({ m: { phase, wishes, idlePrompts: 0 }, speaking: false });
     this.enter(phase, 'debug');
   }
 
   private async refreshBackend() {
     const b = await checkBackend();
     useStore.getState().set({ backend: b });
-    if (__DEV__) console.log('[shenlong] servidor', JSON.stringify(b));
+    dlog(`servidor ${apiUrl()} → ${JSON.stringify(b)}`);
   }
 
   // ───────────── núcleo ─────────────
@@ -161,13 +170,12 @@ class Controller {
     switch (phase) {
       case 'hunt':
         // Radar do Dragão: o app vira um radar; o dragão (3D) pausa
-        st.set({ caption: null, speaking: false });
-        stopAllSfx();
+        st.set({ speaking: false });
+        stopAllSfx('opening');
         void tracker.start();
         break;
 
       case 'altar':
-        st.set({ caption: null });
         void this.refreshBackend();
         stopAllSfx();
         playSfx('drone', { loop: true, volume: 0.5 });
@@ -176,7 +184,6 @@ class Controller {
 
       case 'summoning': {
         this.history = [];
-        st.set({ caption: null });
         playSfx('ping');
         hap.medium();
         stopSfx('drone', 2500);
@@ -224,23 +231,47 @@ class Controller {
         break;
 
       case 'goodbye':
-        if (this.goodbyeFixed) {
+        if (this.m.wishes > 0) {
+          this.sayLine('farewell', () => alive(), () => this.dispatch({ type: 'GOODBYE_DONE' }));
+        } else if (this.goodbyeFixed) {
           this.sayLine('goodbye', () => alive(), () => this.dispatch({ type: 'GOODBYE_DONE' }));
         } else {
           this.later(700, () => this.dispatch({ type: 'GOODBYE_DONE' }));
         }
         break;
 
-      case 'disappearing':
+      case 'disappearing': {
         this.history = [];
-        playSfx('roar', { volume: 0.7 });
-        this.later(300, () => this.bolt(true));
-        this.later(TIMING.disappear - 800, () => hap.warning());
-        this.later(TIMING.disappear, () => {
-          this.scatterBalls(); // desejo realizado: as esferas se espalham de novo
+        const done = () => {
+          this.scatterBalls(); // as esferas se espalham de novo pelo planeta
           this.dispatch({ type: 'DISAPPEAR_DONE' });
-        });
+        };
+        if (this.m.wishes > 0) {
+          // desejo realizado: dourado → 7 esferas girando → um brilho → lançadas pelo planeta
+          const at = (f: number, fn: () => void) => this.later(TIMING.release * f, fn);
+          stopSfx('drone', 1500);
+          playSfx('charge', { volume: 0.9 });
+          rampHaptics(TIMING.release * RELEASE.burst, () => !alive());
+          at(RELEASE.burst - 0.02, () => {
+            playSfx('impact', { volume: 0.8 });
+            playSfx('chime');
+            hap.heavy();
+          });
+          at(RELEASE.merge - 0.12, () => playSfx('gather'));
+          at(RELEASE.launch, () => {
+            playSfx('thunder', { volume: 0.7 });
+            hap.success();
+          });
+          [0, 1, 2].forEach((k) => at(RELEASE.launch + 0.02 + k * 0.05, () => playSfx('ping', { volume: 0.6 })));
+          at(1, done);
+        } else {
+          playSfx('roar', { volume: 0.7 });
+          this.later(300, () => this.bolt(true));
+          this.later(TIMING.disappear - 800, () => hap.warning());
+          this.later(TIMING.disappear, done);
+        }
         break;
+      }
 
       case 'boot':
         break;
@@ -257,6 +288,7 @@ class Controller {
   // ───────────── escuta ─────────────
   private listen(mode: 'invocation' | 'conversation') {
     const st = useStore.getState();
+    dlog(`escuta ${mode} (fase ${this.m.phase}, microfone ${st.micDenied ? 'NEGADO' : 'ok'}, gravador ${this.voice ? 'ok' : 'AUSENTE'})`);
     if (st.micDenied && mode === 'invocation') return; // só toque longo
     const myTurn = this.turn;
     if (__DEV__) st.set({ voiceState: 'ouvindo' });
@@ -281,54 +313,77 @@ class Controller {
         }
       },
       onClip: (clip) => {
-        if (myTurn !== this.turn) return;
+        if (myTurn !== this.turn) {
+          dlog('clipe IGNORADO: turno mudou');
+          return;
+        }
         void this.onClip(mode, clip);
+      },
+      onError: (msg) => {
+        if (__DEV__) useStore.getState().set({ voiceState: `reabrindo microfone (${msg})` });
       },
     });
   }
 
   private async onClip(mode: 'invocation' | 'conversation', clip: ClipInfo) {
-    if (this.processing) return;
-    const phaseAtStart = this.m.phase;
-    if (__DEV__) {
-      console.log(`[voz] fala de ${clip.voiceMs} ms, pico ${clip.peak.toFixed(2)}`);
-      useStore.getState().set({ voiceState: `fala ${clip.voiceMs} ms → reconhecendo…` });
+    if (this.processing) {
+      dlog('clipe IGNORADO: ainda processando o anterior');
+      return;
     }
+    const phaseAtStart = this.m.phase;
+    dlog(`clipe ${mode}: voz ${clip.voiceMs} ms, pico ${clip.peak.toFixed(2)}, fase ${phaseAtStart}`);
+    if (__DEV__) useStore.getState().set({ voiceState: `fala ${clip.voiceMs} ms → reconhecendo…` });
     const offline = async () => {
       if (mode === 'invocation') {
         // sem STT (sem chave/sem rede): qualquer fala clara de ~0,5–5 s invoca — a criança sempre consegue
-        if (clip.voiceMs >= 450 && clip.voiceMs <= 5500 && clip.peak > 0.3) this.invoke();
+        const ok = clip.voiceMs >= 450 && clip.voiceMs <= 5500 && clip.peak > 0.3;
+        dlog(`offline: ${ok ? 'invoca' : 'NAO invoca (precisa voz 450–5500 ms e pico > 0.30)'}`);
+        if (ok) this.invoke();
         else useStore.getState().bump('missed');
       } else if (this.m.phase === 'listening') {
         await this.failTurn('offline');
       }
     };
     if (!useStore.getState().backend.stt) {
+      dlog('STT indisponivel (servidor fora do ar ou sem chave): modo offline');
       deleteClip(clip.uri);
       void this.refreshBackend();
       await offline();
       return;
     }
     let text = '';
+    dclip(clip.uri);
+    const t0 = Date.now();
     try {
       text = await transcribe(clip.uri);
     } catch (e) {
-      if (__DEV__) console.log('[stt] falhou', String(e));
+      dlog(`STT FALHOU em ${Date.now() - t0} ms: ${String(e).slice(0, 160)}`);
+      if (__DEV__) useStore.getState().set({ voiceState: `reconhecimento falhou (${String(e).slice(0, 60)})` });
       if (e instanceof SttUnavailable) await offline();
       return;
     }
-    if (__DEV__) {
-      console.log(`[stt] "${text}"`);
-      useStore.getState().set({ voiceState: 'ouvindo' });
+    dlog(`STT ${Date.now() - t0} ms: "${text}"`);
+    if (__DEV__) useStore.getState().set({ voiceState: `ouvi: "${text.slice(0, 50)}"` });
+    if (!isPromptEcho(text)) useStore.getState().set({ lastHeard: text });
+    if (this.m.phase !== phaseAtStart) {
+      dlog(`descartado: fase mudou de ${phaseAtStart} para ${this.m.phase} durante o STT`);
+      return;
     }
-    useStore.getState().set({ lastHeard: text });
-    if (this.m.phase !== phaseAtStart) return;
     if (looksLikeHallucination(text, clip.voiceMs)) {
+      dlog('descartado: parece alucinacao do STT');
       if (mode === 'invocation') useStore.getState().bump('missed');
       return;
     }
+    if (isPromptEcho(text)) {
+      // o STT devolve a dica do prompt para silêncio/ruído/fala cortada: equivale a "não entendi"
+      dlog('STT devolveu a dica do prompt (audio sem fala clara)');
+      if (mode === 'invocation') await offline();
+      return;
+    }
     if (mode === 'invocation') {
-      if (isInvocation(text)) this.invoke();
+      const ok = isInvocation(text);
+      dlog(ok ? 'INVOCACAO reconhecida' : `nao e invocacao: "${normalize(text)}"`);
+      if (ok) this.invoke();
       else useStore.getState().bump('missed');
     } else {
       void this.handleUtterance(text);
@@ -336,7 +391,10 @@ class Controller {
   }
 
   private invoke() {
-    if (this.m.phase !== 'altar') return;
+    if (this.m.phase !== 'altar') {
+      dlog(`invocacao ignorada: fase ${this.m.phase} (so vale no altar)`);
+      return;
+    }
     void this.voice?.stop();
     this.dispatch({ type: 'INVOKE' });
   }
@@ -371,7 +429,6 @@ class Controller {
     this.processing = true;
     const myTurn = ++this.turn;
     void this.voice?.stop();
-    useStore.getState().set({ caption: { id: Date.now(), who: 'user', text } });
     this.dispatch({ type: 'UTTERANCE' });
 
     this.history.push({ role: 'user', content: text });

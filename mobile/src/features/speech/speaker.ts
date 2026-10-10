@@ -30,7 +30,7 @@ interface Item {
 }
 
 export interface SpeakerEvents {
-  /** começou a tocar uma frase (legenda + boca) */
+  /** começou a tocar uma frase (boca/olhos; sem legenda: Shenlong só fala) */
   onPlay: (text: string) => void;
   /** a fila esvaziou ou foi interrompida */
   onIdle: () => void;
@@ -176,7 +176,7 @@ export class Speaker {
         return;
       }
       try {
-        const player = createAudioPlayer(p.uri);
+        const player = createAudioPlayer(p.uri, { keepAudioSessionActive: true });
         this.player = player;
         const sub = player.addListener('playbackStatusUpdate', (s) => {
           if (s.didJustFinish) done();

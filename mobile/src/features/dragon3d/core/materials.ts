@@ -8,11 +8,30 @@ export const shared = {
   uRim: { value: 0.6 },
   uRimColor: { value: new THREE.Color('#ffd27a') },
   uSwayAmp: { value: 0.05 },
+  /** saída após o desejo: 0..1 o dragão vira ouro luminoso; 1..2 estoura em luz branca-dourada */
+  uGold: { value: 0 },
 };
 
 const COMMON_FRAG = /* glsl */ `
 uniform float uRim;
 uniform vec3 uRimColor;
+uniform float uGold;
+`;
+
+const GOLD = /* glsl */ `
+{
+  float g = clamp(uGold, 0.0, 1.0);
+  float burst = clamp(uGold - 1.0, 0.0, 1.0);
+  float edge = pow(1.0 - clamp(abs(dot(normal, normalize(vViewPosition))), 0.0, 1.0), 2.0);
+  // ouro: a luz recebida vira tons de ouro (mantém o relevo das escamas) + contorno incandescente
+  const vec3 GOLD_TINT = vec3(1.0, 0.5, 0.05);
+  const vec3 LUMA = vec3(0.3, 0.59, 0.11);
+  reflectedLight.directDiffuse = mix(reflectedLight.directDiffuse, GOLD_TINT * dot(reflectedLight.directDiffuse, LUMA) * 1.6, g);
+  reflectedLight.indirectDiffuse = mix(reflectedLight.indirectDiffuse, GOLD_TINT * dot(reflectedLight.indirectDiffuse, LUMA) * 1.6, g);
+  reflectedLight.directSpecular = mix(reflectedLight.directSpecular, vec3(1.0, 0.75, 0.3) * dot(reflectedLight.directSpecular, LUMA) * 2.5, g);
+  vec3 glow = GOLD_TINT * (0.12 + 0.8 * edge);
+  totalEmissiveRadiance = mix(totalEmissiveRadiance, glow, g) + (GOLD_TINT * 1.5 + vec3(1.2, 1.0, 0.7)) * burst * burst * 2.0;
+}
 `;
 
 /** Contraluz/fresnel quente (dá a silhueta "de cinema" e simula o brilho das esferas) + AO do vertex alpha. */
@@ -30,7 +49,7 @@ const RIM_AND_AO = /* glsl */ `
   #endif
   totalEmissiveRadiance += uRimColor * fr * uRim;
 }
-`;
+${GOLD}`;
 
 function base(params: THREE.MeshStandardMaterialParameters) {
   return new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0, ...params });
@@ -150,7 +169,7 @@ export function createMaterials(): DragonMaterials {
       s.fragmentShader = s.fragmentShader
         .replace('#include <common>', `#include <common>\n${COMMON_FRAG}`)
         .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.a = 1.0;')
-        .replace('#include <aomap_fragment>', rim ? RIM_AND_AO : '#include <aomap_fragment>');
+        .replace('#include <aomap_fragment>', rim ? RIM_AND_AO : `#include <aomap_fragment>\n${GOLD}`);
     };
     return m;
   };
@@ -170,7 +189,7 @@ export function createMaterials(): DragonMaterials {
 /** Olho: íris vermelha luminosa, pupila em fenda, córnea com brilho especular. +Z local = frente. */
 function createEyeMaterial() {
   return new THREE.ShaderMaterial({
-    uniforms: { uGlow: { value: 0.6 }, uPupil: { value: 1 } },
+    uniforms: { uGlow: { value: 0.6 }, uPupil: { value: 1 }, uGold: shared.uGold },
     vertexShader: /* glsl */ `
       varying vec3 vLocal; varying vec3 vN; varying vec3 vView;
       void main() {
@@ -181,7 +200,7 @@ function createEyeMaterial() {
         gl_Position = projectionMatrix * mv;
       }`,
     fragmentShader: /* glsl */ `
-      uniform float uGlow; uniform float uPupil;
+      uniform float uGlow; uniform float uPupil; uniform float uGold;
       varying vec3 vLocal; varying vec3 vN; varying vec3 vView;
       void main() {
         // olho vermelho luminoso (como no anime): centro quente, borda vermelho-escura
@@ -196,6 +215,9 @@ function createEyeMaterial() {
         vec3 L = normalize(vec3(-0.4, 0.7, 0.6));
         float spec = pow(max(dot(reflect(-L, N), V), 0.0), 60.0);
         vec3 outc = col * (0.55 + 0.9 * uGlow) + vec3(1.0, 0.9, 0.8) * spec * 1.2;
+        // em brasa: vermelho puro (o ACES puxa vermelhos muito intensos para o laranja)
+        outc = mix(outc, vec3(1.5, 0.0, 0.0), smoothstep(1.4, 2.6, uGlow));
+        outc = mix(outc, vec3(1.6, 1.25, 0.6) * (1.0 + 2.0 * clamp(uGold - 1.0, 0.0, 1.0)), 0.7 * clamp(uGold, 0.0, 1.0));
         gl_FragColor = vec4(outc, 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>

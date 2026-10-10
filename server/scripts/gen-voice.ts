@@ -9,7 +9,7 @@ import { LINES } from '../../mobile/src/core/lines';
 import { ttsAvailable, ttsEngine, synthesize } from '../src/providers/tts.js';
 
 if (!ttsAvailable()) {
-  console.error('Nenhuma voz disponível: rode `make voice-setup` (Piper, grátis) ou defina OPENAI_API_KEY em server/.env.');
+  console.error('Nenhuma voz disponível: rode `make voice-setup` (Piper, grátis) ou defina GEMINI_API_KEY em server/.env.');
   process.exit(1);
 }
 console.log(`voz: ${ttsEngine()} + efeito dragão`);

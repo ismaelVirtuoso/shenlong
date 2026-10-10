@@ -4,7 +4,7 @@ import { Canvas, Group, useCanvasRef } from '@shopify/react-native-skia';
 import { useDerivedValue } from 'react-native-reanimated';
 import { PROFILES } from '@/core/quality';
 import { Altar, Balls } from './Balls';
-import { Bolt, Embers, Pillar, Vignette, WishWave } from './Energy';
+import { Bolt, Embers, Pillar, Release, TailGlow, Vignette, WishWave } from './Energy';
 import { useSceneValues } from './drive';
 import { useSceneStore } from './bridge';
 import type { Layout } from './types';
@@ -18,7 +18,9 @@ export function Scene() {
   const fx = useSceneStore((s) => s.fx);
   // efeitos montados só quando existem: nada de blur invisível sendo desenhado a cada quadro
   const showAltar = phase === 'boot' || phase === 'altar' || phase === 'summoning' || phase === 'disappearing';
-  const showPillar = phase === 'summoning' || phase === 'appearing' || phase === 'disappearing';
+  const releasing = useSceneStore((s) => s.m.phase === 'disappearing' && s.m.wishes > 0);
+  const showPillar = phase === 'summoning' || phase === 'appearing' || (phase === 'disappearing' && !releasing);
+  const united = phase !== 'boot' && phase !== 'hunt' && phase !== 'altar';
   const bolt = usePulse(fx.bolt + fx.wish, 1400);
   const wave = usePulse(fx.wish, 2600);
   const S = useSceneValues();
@@ -44,6 +46,8 @@ export function Scene() {
         {showPillar && <Pillar S={S} L={L} />}
         <Embers S={S} L={L} />
         {wave && <WishWave S={S} L={L} />}
+        {united && <TailGlow S={S} L={L} />}
+        {releasing && <Release S={S} L={L} />}
         <Balls S={S} L={L} />
       </Group>
       {bolt && <Bolt S={S} L={L} />}

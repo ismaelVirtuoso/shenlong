@@ -65,7 +65,7 @@ export function createLandscape(quality: QualityLevel) {
   const group = new THREE.Group();
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0, flatShading: true });
   const segs = quality === 'low' ? 9 : 14;
-  // [x, z, altura, raio] — base em y = -16 (abaixo das nuvens)
+  // [x, z, altura, raio] — base em y = -19: topos abaixo da cauda, o "8" do dragão fica limpo
   const spires: [number, number, number, number][] = [
     [-7.5, -12, 12.5, 2.2], [8.5, -15, 13, 2.6], [-4.2, -22, 11, 2.0], [5.5, -26, 13.5, 2.8],
     [-11.5, -28, 15, 3.2], [13, -32, 14, 3.0], [-1.2, -38, 10.5, 2.4], [17, -44, 16, 3.6], [-17, -46, 17, 3.8],
@@ -73,7 +73,7 @@ export function createLandscape(quality: QualityLevel) {
   const n = quality === 'low' ? 5 : spires.length;
   for (const [x, z, h, r] of spires.slice(0, n)) {
     const m = new THREE.Mesh(spire(h, r, segs), mat);
-    m.position.set(x, -16, z);
+    m.position.set(x, -19, z);
     m.rotation.y = rnd() * 6;
     group.add(m);
   }
@@ -90,7 +90,7 @@ export function createLandscape(quality: QualityLevel) {
   // chão verde lá embaixo
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400, 1, 1), new THREE.MeshStandardMaterial({ color: '#3f7a32', roughness: 1 }));
   ground.rotation.x = -Math.PI / 2;
-  ground.position.y = -16;
+  ground.position.y = -19;
   group.add(ground);
   return group;
 }
